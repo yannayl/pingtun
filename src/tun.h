@@ -7,14 +7,16 @@ extern "C" {
 
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <linux/if.h>
+#include <netinet/in.h>
+#include <net/if.h>
 
 typedef struct {
 	char name[IFNAMSIZ];
 	int fd;
 } pingtun_tun_t;
 
-int pingtun_tun_init(pingtun_tun_t **handle);
+int pingtun_tun_init(pingtun_tun_t **handle, const struct in_addr *address,
+		const struct in_addr *netmask);
 int pingtun_tun_fd(pingtun_tun_t *handle);
 const char *pingtun_tun_name(pingtun_tun_t *handle);
 ssize_t pingtun_tun_read(pingtun_tun_t *handle, void *buf, size_t len);

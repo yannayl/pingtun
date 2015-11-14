@@ -12,7 +12,53 @@
 
 #define TUN_DEV	"/dev/net/tun"
 
-int pingtun_tun_init(pingtun_tun_t **handle) {
+static int set_ip_netmask(pingtun_tun_t *tun, const struct in_addr *address,
+		const struct in_addr *netmask) {
+	int ret = -1;
+	struct sockaddr_in *addr = NULL;
+	struct ifreq ifr;
+	int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+
+	if (0 > sock) {
+		ERR("failed to open sock. error: %s.", strerror(errno));
+		goto exit;
+	}
+	
+	strncpy(ifr.ifr_name, tun->name, IFNAMSIZ);
+	ifr.ifr_addr.sa_family = AF_INET;
+	addr = (struct sockaddr_in *) &ifr.ifr_addr;
+
+	addr->sin_addr = *address;
+	if (0 != ioctl(sock, SIOCSIFADDR, &ifr)) {
+		ERR("failed set ip address. error: %s.", strerror(errno));
+		goto exit;
+	}
+
+	addr->sin_addr = *netmask; 
+	if (0 != ioctl(sock, SIOCSIFNETMASK, &ifr)) {
+		ERR("failed set ip address. error: %s.", strerror(errno));
+		goto exit;
+	}
+	
+	if (0 != ioctl(sock, SIOCGIFFLAGS, &ifr)) {
+		ERR("failed get interface flags. error: %s.", strerror(errno));
+		goto exit;
+	}
+	
+	ifr.ifr_flags |= (IFF_UP | IFF_RUNNING);
+	if (0 != ioctl(sock, SIOCSIFFLAGS, &ifr)) {
+		ERR("failed set interface up & running. error: %s.", strerror(errno));
+		goto exit;
+	}
+
+	ret = 0;
+exit:
+	close(sock);
+	return ret;
+}
+
+int pingtun_tun_init(pingtun_tun_t **handle, const struct in_addr *address,
+		const struct in_addr *netmask) {
 	int ret = -1;
 	struct ifreq ifr;
 
@@ -36,6 +82,10 @@ int pingtun_tun_init(pingtun_tun_t **handle) {
 	}
 
 	strncpy((*handle)->name, ifr.ifr_name, IFNAMSIZ);
+
+	if (0 != set_ip_netmask(*handle, address, netmask)) {
+		goto exit;
+	}
 
 	ret = 0;
 exit:
