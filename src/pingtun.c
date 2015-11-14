@@ -1,18 +1,10 @@
+#include "pingtun.h"
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <getopt.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-
-#define LOG(format, ...)\
-	do { fprintf(stderr, format "\n", ##__VA_ARGS__); } while (0)
-
-#define ERR(format, ...)\
-	LOG("ERR: " format, ##__VA_ARGS__)
-
-#define DBG(format, ...)\
-	LOG("DBG: " format, ##__VA_ARGS__)
 
 typedef struct {
 	int		ping_reply;
