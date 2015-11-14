@@ -1,1 +1,1 @@
-add_executable (pingtun pingtun.c)
+add_executable (pingtun tun.c pingtun.c)
