@@ -1,5 +1,5 @@
-pingtun -- The *Best* ICMP tunnel
-======================
+pingtun - The *Best* ICMP tunnel
+==================================
 
 ** Build **
 ```
@@ -20,10 +20,18 @@ on the client:
 sudo pingtun --server $SERVER_IP 10.9.0.1 255.255.255.252
 ```
 
+** Platforms **
+* GNU/Linux
+
 ** TODO **
 
 * make it work
+* code documentation
+* tests (valgrind? utests?)
+* add magic & BPF
 * reply to normal pings
 * parse dns
 * timer adjustments
 * real authentication
+* increase speed using rx/tx rings and zero-copy
+* android
