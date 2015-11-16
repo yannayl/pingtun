@@ -63,7 +63,7 @@ int pingtun_tun_init(pingtun_tun_t **handle, const struct in_addr *address,
 	struct ifreq ifr;
 
 	*handle = calloc(1, sizeof(pingtun_tun_t));
-	if (NULL == handle) {
+	if (NULL == *handle) {
 		ERR("memory allocation failed");
 		goto exit;
 	}
