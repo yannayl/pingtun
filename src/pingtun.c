@@ -1,5 +1,6 @@
 #include "pingtun.h"
 #include "tun.h"
+#include "ping.h"
 
 #include <unistd.h>
 #include <stdio.h>
@@ -91,6 +92,11 @@ static void parse_opts(pingtun_opts_t *opts, int argc, char **argv) {
 int main(int argc, char **argv) {
 	pingtun_opts_t options = {0};
 	pingtun_tun_t *tun = NULL;
+	pingtun_ping_t *ping = NULL;
+	ssize_t len = -1;
+	const struct icmphdr *icmphdr_p = NULL;
+	const void *data = NULL;
+	struct sockaddr_in sockaddr = {0};
 
 	DBG("parsing options");
 	parse_opts(&options, argc, argv);
@@ -104,10 +110,18 @@ int main(int argc, char **argv) {
 		ERR("initializing tun device failed.");
 		return -1;
 	}
-
-	//TODO: open raw socket
 	
-	sleep(10);
+	DBG("initializing ping socket");
+	if (0 != pingtun_ping_init(&ping)) {
+		ERR("initializing ping socket failed.");
+		return -1;
+	}
+
+	while(1) {
+		len = pingtun_ping_rcv(ping, &icmphdr_p, &data, &sockaddr);
+		DBG("received %zd... replying", len);
+		pingtun_ping_rpl(ping, data, len, &sockaddr);
+	}
 	return 0;
 }
 
