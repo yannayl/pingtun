@@ -16,7 +16,7 @@ typedef struct {
 } pingtun_tun_t;
 
 int pingtun_tun_init(pingtun_tun_t **handle, const struct in_addr *address,
-		const struct in_addr *netmask);
+		const struct in_addr *netmask, size_t mtu);
 int pingtun_tun_fd(pingtun_tun_t *handle);
 const char *pingtun_tun_name(pingtun_tun_t *handle);
 ssize_t pingtun_tun_read(pingtun_tun_t *handle, void *buf, size_t len);

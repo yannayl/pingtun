@@ -12,8 +12,8 @@
 
 #define TUN_DEV	"/dev/net/tun"
 
-static int set_ip_netmask(pingtun_tun_t *tun, const struct in_addr *address,
-		const struct in_addr *netmask) {
+static int set_if_params(pingtun_tun_t *tun, const struct in_addr *address,
+		const struct in_addr *netmask, size_t mtu) {
 	int ret = -1;
 	struct sockaddr_in *addr = NULL;
 	struct ifreq ifr;
@@ -41,16 +41,22 @@ static int set_ip_netmask(pingtun_tun_t *tun, const struct in_addr *address,
 	}
 	
 	if (0 != ioctl(sock, SIOCGIFFLAGS, &ifr)) {
-		ERR("failed get interface flags. error: %s.", strerror(errno));
+		ERR("failed get interface params. error: %s.", strerror(errno));
 		goto exit;
 	}
 	
+	ifr.ifr_mtu = mtu;
+	if (0 != ioctl(sock, SIOCSIFMTU, &ifr)) {
+		ERR("failed set mtu (%zu). error: %s.", mtu, strerror(errno));
+		goto exit;
+	}
+
 	ifr.ifr_flags |= (IFF_UP | IFF_RUNNING);
 	if (0 != ioctl(sock, SIOCSIFFLAGS, &ifr)) {
 		ERR("failed set interface up & running. error: %s.", strerror(errno));
 		goto exit;
 	}
-
+	
 	ret = 0;
 exit:
 	close(sock);
@@ -58,7 +64,7 @@ exit:
 }
 
 int pingtun_tun_init(pingtun_tun_t **handle, const struct in_addr *address,
-		const struct in_addr *netmask) {
+		const struct in_addr *netmask, size_t mtu) {
 	int ret = -1;
 	struct ifreq ifr;
 
@@ -83,7 +89,7 @@ int pingtun_tun_init(pingtun_tun_t **handle, const struct in_addr *address,
 
 	strncpy((*handle)->name, ifr.ifr_name, IFNAMSIZ);
 
-	if (0 != set_ip_netmask(*handle, address, netmask)) {
+	if (0 != set_if_params(*handle, address, netmask, mtu)) {
 		goto exit;
 	}
 

@@ -94,6 +94,7 @@ int main(int argc, char **argv) {
 	pingtun_tun_t *tun = NULL;
 	pingtun_ping_t *ping = NULL;
 	ssize_t len = -1;
+	ssize_t mtu = -1;
 	const struct icmphdr *icmphdr_p = NULL;
 	const void *data = NULL;
 	struct sockaddr_in sockaddr = {0};
@@ -105,18 +106,19 @@ int main(int argc, char **argv) {
 	//TODO: echo 0 > /proc/sys/net/ipv4/icmp_echo_ignore_all
 	//TODO:   (and save original value for restoration)
 	
-	DBG("initializing tun device");
-	if (0 != pingtun_tun_init(&tun, &options.address, &options.netmask)) {
-		ERR("initializing tun device failed.");
-		return -1;
-	}
-	
 	DBG("initializing ping socket");
 	if (0 != pingtun_ping_init(&ping)) {
 		ERR("initializing ping socket failed.");
 		return -1;
 	}
+	mtu = pingtun_ping_mtu(ping);
 
+	DBG("initializing tun device");
+	if (0 != pingtun_tun_init(&tun, &options.address, &options.netmask, mtu)) {
+		ERR("initializing tun device failed.");
+		return -1;
+	}
+	
 	while(1) {
 		len = pingtun_ping_rcv(ping, &icmphdr_p, &data, &sockaddr);
 		DBG("received %zd... replying", len);

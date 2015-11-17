@@ -25,6 +25,7 @@ typedef struct {
 
 int pingtun_ping_init(pingtun_ping_t **handle);
 int pingtun_ping_fd(pingtun_ping_t *handle);
+size_t pingtun_ping_mtu(pingtun_ping_t *handle);
 void *pingtun_ping_data(pingtun_ping_t *handle, size_t *len);
 ssize_t pingtun_ping_rpl(pingtun_ping_t *handle, const void *buf, size_t len,
 		const struct sockaddr_in *dest_addr);

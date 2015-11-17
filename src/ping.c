@@ -122,6 +122,10 @@ int pingtun_ping_fd(pingtun_ping_t *handle) {
 	return handle->fd;
 }
 
+size_t pingtun_ping_mtu(pingtun_ping_t *handle) {
+	return handle->packet_size - sizeof(struct iphdr) - sizeof(struct icmphdr);
+}
+
 void *pingtun_ping_data(pingtun_ping_t *handle, size_t *len) {
 	*len = handle->packet_size - sizeof(struct icmphdr);
 	return handle->packet + sizeof(struct icmphdr);
