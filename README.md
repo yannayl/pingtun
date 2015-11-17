@@ -28,10 +28,11 @@ sudo pingtun --server $SERVER_IP 10.9.0.1 255.255.255.252
 * make it work
 * code documentation
 * tests (valgrind? utests?)
-* add magic & BPF
 * reply to normal pings
+* android
+* add magic & BPF
+* MTU discovery
 * parse dns
 * timer adjustments
 * real authentication
 * increase speed using rx/tx rings and zero-copy
-* android
