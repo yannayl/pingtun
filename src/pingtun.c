@@ -74,13 +74,13 @@ static void parse_opts(pingtun_opts_t *opts, int argc, char **argv) {
 				usage();
 		}
 
-		c = getopt_long(argc, argv, "s:", long_options,  NULL);
+		c = getopt_long(argc, argv, "s:p", long_options,  NULL);
 	}
 
-	if (argc > optind + PINGTUN_POS_ARGS_NUM) {
-		ERR("missing address argument");
+	if (argc < optind + PINGTUN_POS_ARGS_NUM) {
+		ERR("missing arguments");
 		usage();
-	} else if (argc < optind + PINGTUN_POS_ARGS_NUM){
+	} else if (argc > optind + PINGTUN_POS_ARGS_NUM){
 		ERR("too many arguments");
 		usage();
 	}
@@ -93,7 +93,8 @@ int main(int argc, char **argv) {
 	pingtun_opts_t options = {0};
 	pingtun_tun_t *tun = NULL;
 	pingtun_ping_t *ping = NULL;
-	ssize_t len = -1;
+	size_t len = -1;
+	size_t i = 0;
 	ssize_t mtu = -1;
 	const struct icmphdr *icmphdr_p = NULL;
 	const void *data = NULL;
@@ -120,9 +121,14 @@ int main(int argc, char **argv) {
 	}
 	
 	while(1) {
-		len = pingtun_ping_rcv(ping, &icmphdr_p, &data, &sockaddr);
-		DBG("received %zd... replying", len);
-		pingtun_ping_rpl(ping, data, len, &sockaddr);
+		data = pingtun_ping_data(ping, &len);
+		for (i = 0; i < len; i++) {
+			*(uint8_t *)(data + i) = i;
+		}
+		sockaddr.sin_addr = options.server;
+		pingtun_ping_req(ping, data, len, &sockaddr);
+		sleep(1);
+		pingtun_ping_rcv(ping, &icmphdr_p, &data, &sockaddr);
 	}
 	return 0;
 }

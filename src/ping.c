@@ -45,7 +45,7 @@ static int ensure_buf_within_packet(const pingtun_ping_t *handle,
 		return -1;
 	}
 	
-	if (buf + len >= handle->packet + handle->packet_size) {
+	if (buf + len > handle->packet + handle->packet_size) {
 		ERR("end buf out of range. end buf = %p, end packet = %p.",
 				buf + len, handle->packet + handle->packet_size);
 		return -1;
@@ -127,8 +127,8 @@ size_t pingtun_ping_mtu(pingtun_ping_t *handle) {
 }
 
 void *pingtun_ping_data(pingtun_ping_t *handle, size_t *len) {
-	*len = handle->packet_size - sizeof(struct icmphdr);
-	return handle->packet + sizeof(struct icmphdr);
+	*len = handle->packet_size - sizeof(struct icmphdr) - sizeof(struct iphdr);
+	return handle->packet + sizeof(struct icmphdr) + sizeof(struct iphdr);
 }
 
 ssize_t pingtun_ping_rpl(pingtun_ping_t *handle, const void *buf, size_t len,
