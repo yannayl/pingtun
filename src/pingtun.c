@@ -11,25 +11,25 @@
 #include <string.h>
 #include <sys/types.h>
 #include <event2/event.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <errno.h>
 
+#define PATH_ICMP_ECHO_IGNORE "/proc/sys/net/ipv4/icmp_echo_ignore_all"
 #define PINGTUN_POS_ARGS_NUM (2)
 
 typedef struct {
 	struct {
 		int	has_server:1;
+		int received_ping:1;
+		int ignore_pings:1;
+		int changed_ignore_pings:1;
 	} flags;
+
 	struct	in_addr server;
 	struct	in_addr address;
 	struct 	in_addr	netmask;
-} pingtun_opts_t;
 
-typedef struct {
-	int received_ping:1;
-} pingtun_state_t;
-
-typedef struct {
-	pingtun_opts_t opts;
-	pingtun_state_t state;
 	pingtun_tun_t *tun;
 	pingtun_ping_t *ping;
 	struct event *ping_snd_ev;
@@ -52,29 +52,29 @@ static void usage() {
 	exit(EXIT_FAILURE);
 }
 
-static void parse_opt_server(pingtun_opts_t *opts) {
-	if (0 == inet_aton(optarg, &(opts->server))) {
+static void parse_opt_server(pingtun_t *handle) {
+	if (0 == inet_aton(optarg, &(handle->server))) {
 		ERR("invalid server address %s", optarg);
 		usage();
 	}
-	opts->flags.has_server = 1;
+	handle->flags.has_server = 1;
 }
 
-static void parse_opt_netmask(pingtun_opts_t *opts, char *arg) {
-	if (0 == inet_aton(arg, &opts->netmask)) {
+static void parse_opt_netmask(pingtun_t *handle, char *arg) {
+	if (0 == inet_aton(arg, &handle->netmask)) {
 		ERR("invalid netmask: %s", arg);
 		usage();
 	}
 }
 
-static void parse_opt_address(pingtun_opts_t *opts, char *arg) {
-	if (0 == inet_aton(arg, &opts->address)) {
+static void parse_opt_address(pingtun_t *handle, char *arg) {
+	if (0 == inet_aton(arg, &handle->address)) {
 		ERR("invalid address: %s", arg);
 		usage();
 	}
 }
 
-static void parse_opts(pingtun_opts_t *opts, int argc, char **argv) {
+static void parse_opts(pingtun_t *handle, int argc, char **argv) {
 	int c = -1;
 	static const struct option long_options[] = {
 		{"server", required_argument, 0, 's'},
@@ -86,7 +86,7 @@ static void parse_opts(pingtun_opts_t *opts, int argc, char **argv) {
 	while (-1 != c) {
 		switch (c) {
 			case 's':
-				parse_opt_server(opts);
+				parse_opt_server(handle);
 				break;
 			default:
 				ERR("unknown options: %d", c);
@@ -104,8 +104,71 @@ static void parse_opts(pingtun_opts_t *opts, int argc, char **argv) {
 		usage();
 	}
 
-	parse_opt_address(opts, argv[optind]);
-	parse_opt_netmask(opts, argv[optind+1]);
+	parse_opt_address(handle, argv[optind]);
+	parse_opt_netmask(handle, argv[optind+1]);
+}
+
+static int set_ignore_echo(pingtun_t *handle) {
+	int ret = -1;
+	int fd = -1;
+	char read_byte;
+
+	fd = open(PATH_ICMP_ECHO_IGNORE, O_RDWR);
+	if (0 > fd) {
+		ERR("failed opening %s. error: %s", PATH_ICMP_ECHO_IGNORE,
+				strerror(errno));
+		goto exit;
+	}
+
+	if (1 != read(fd, &read_byte, sizeof(read_byte))) {
+		ERR("failed reading %s. error: %s", PATH_ICMP_ECHO_IGNORE,
+				strerror(errno));
+		goto exit;
+	}
+
+	switch (read_byte) {
+		case '0':
+			break;
+		case '1':
+			handle->flags.ignore_pings = 1;
+			break;
+		default:
+			ERR("unexpected icmp ignore value: %c", read_byte);
+			goto exit;
+	}
+
+	if (!handle->flags.ignore_pings) {
+		read_byte = '1';
+		if (1 != write(fd, &read_byte, sizeof(read_byte))) {
+			ERR("failed writing %s. error: %s", PATH_ICMP_ECHO_IGNORE,
+					strerror(errno));
+			goto exit;
+		}
+		handle->flags.changed_ignore_pings = 1;
+	}
+
+	ret = 0;
+exit:
+	close(fd);
+	return ret;
+}
+
+static void reset_ignore_echo(pingtun_t *handle) {
+	int fd = -1;
+	char read_byte;
+
+	if (!handle->flags.changed_ignore_pings) {
+		return;
+	}
+
+	fd = open(PATH_ICMP_ECHO_IGNORE, O_RDWR);
+	if (0 > fd) {
+		return;
+	}
+
+	read_byte = '1';
+	write(fd, &read_byte, sizeof(read_byte));
+	close(fd);
 }
 
 static void ping_ev_cb(evutil_socket_t fd, short events, void *pt_handle) {
@@ -121,7 +184,7 @@ static void ping_ev_cb(evutil_socket_t fd, short events, void *pt_handle) {
 		}
 
 		if (icmp_header->type == ICMP_ECHO) {
-			handle->state.received_ping = 1;
+			handle->flags.received_ping = 1;
 		}
 
 		if (0 != event_add(handle->tun_write_ev, NULL)) {
@@ -193,14 +256,14 @@ static int init_tun(pingtun_t *handle) {
 	short events;
 	size_t mtu = pingtun_ping_mtu(handle->ping);
 
-	if (0 != pingtun_tun_init(&handle->tun, &handle->opts.address,
-				&handle->opts.netmask, mtu)) {
+	if (0 != pingtun_tun_init(&handle->tun, &handle->address,
+				&handle->netmask, mtu)) {
 		ERR("initializing tun device failed.");
 		return -1;
 	}
 
 	events = EV_READ;
-	if (handle->opts.flags.has_server) {
+	if (handle->flags.has_server) {
 		events |= EV_PERSIST;
 	}
 	handle->tun_read_ev = event_new(handle->base_ev,
@@ -221,13 +284,13 @@ static int init_tun(pingtun_t *handle) {
 }
 
 static int add_events(pingtun_t *handle) {
-	if (0 == event_add(handle->ping_rcv_ev, NULL)) {
+	if (0 != event_add(handle->ping_rcv_ev, NULL)) {
 		ERR("failed adding event");
 		return -1;
 	}
 
-	if (handle->opts.flags.has_server) {
-		if (0 == event_add(handle->tun_read_ev, NULL)) {
+	if (handle->flags.has_server) {
+		if (0 != event_add(handle->tun_read_ev, NULL)) {
 			ERR("failed adding event");
 			return -1;
 		}
@@ -242,10 +305,12 @@ int main(int argc, char **argv) {
 	memset(&handle, 0, sizeof(handle));
 
 	DBG("parsing options");
-	parse_opts(&handle.opts, argc, argv);
+	parse_opts(&handle, argc, argv);
+
+	if (0 != set_ignore_echo(&handle)) {
+		goto exit;
+	}
 	
-	//TODO: echo 0 > /proc/sys/net/ipv4/icmp_echo_ignore_all
-	//TODO:   (and save original value for restoration)
 	DBG("initializing event base");
 	if (0 != init_base_ev(&handle)) {
 		goto exit;
@@ -278,6 +343,7 @@ int main(int argc, char **argv) {
 
 	ret = 0;
 exit:
+	reset_ignore_echo(&handle);
 	//TODO: de-allocate all the shit. Do I really care?
 	return ret;
 }
