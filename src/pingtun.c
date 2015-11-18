@@ -14,6 +14,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <signal.h>
 
 #define PATH_ICMP_ECHO_IGNORE "/proc/sys/net/ipv4/icmp_echo_ignore_all"
 #define PINGTUN_POS_ARGS_NUM (2)
@@ -36,6 +37,7 @@ typedef struct {
 	struct event *ping_rcv_ev;
 	struct event *tun_read_ev;
 	struct event *tun_write_ev;
+	struct event *sigint_ev;
 	struct event_base *base_ev;
 
 	ssize_t len;
@@ -155,7 +157,7 @@ exit:
 
 static void reset_ignore_echo(pingtun_t *handle) {
 	int fd = -1;
-	char read_byte;
+	char write_byte;
 
 	if (!handle->flags.changed_ignore_pings) {
 		return;
@@ -166,8 +168,8 @@ static void reset_ignore_echo(pingtun_t *handle) {
 		return;
 	}
 
-	read_byte = '1';
-	write(fd, &read_byte, sizeof(read_byte));
+	write_byte = '0';
+	write(fd, &write_byte, sizeof(write_byte));
 	close(fd);
 }
 
@@ -217,6 +219,14 @@ static void tun_ev_cb(evutil_socket_t fd, short events, void *pt_handle) {
 	}
 
 	return;
+}
+
+static void break_cb(evutil_socket_t signal, short events, void *pt_handle) {
+	pingtun_t *handle = (pingtun_t *) pt_handle;
+	if (0 != event_base_loopbreak(handle->base_ev)) {
+		ERR("failed to break the loop!");
+		exit(EXIT_FAILURE);
+	}
 }
 
 static int init_base_ev(pingtun_t *handle) {
@@ -284,6 +294,19 @@ static int init_tun(pingtun_t *handle) {
 }
 
 static int add_events(pingtun_t *handle) {
+	handle->sigint_ev = evsignal_new(handle->base_ev, SIGINT, break_cb,
+			handle);
+
+	if (NULL == handle->sigint_ev) {
+		ERR("initializing event failed");
+		return -1;
+	}
+
+	if (0 != evsignal_add(handle->sigint_ev, NULL)) {
+		ERR("failed adding event");
+		return -1;
+	}
+
 	if (0 != event_add(handle->ping_rcv_ev, NULL)) {
 		ERR("failed adding event");
 		return -1;
