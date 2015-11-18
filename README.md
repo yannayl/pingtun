@@ -3,10 +3,7 @@ pingtun - The *Best* ICMP tunnel
 
 ## Build ##
 ```
-mkdir build
-cd build
-cmake ..
-make
+cmake . && make
 ```
 
 ## Run  ##

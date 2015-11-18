@@ -7,3 +7,5 @@ install_manifest.txt
 src/pingtun
 *.swp
 /build/
+compile_commands.json
+*.pyc
