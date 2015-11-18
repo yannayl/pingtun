@@ -1,7 +1,7 @@
 pingtun - The *Best* ICMP tunnel
 ==================================
 
-** Build **
+## Build ##
 ```
 mkdir build
 cd build
@@ -9,7 +9,7 @@ cmake ..
 make
 ```
 
-** Run  **
+## Run  ##
 
 on the server:
 ```
@@ -20,19 +20,20 @@ on the client:
 sudo pingtun --server $SERVER_IP 10.9.0.1 255.255.255.252
 ```
 
-** Platforms **
+## Platforms ##
 * GNU/Linux
 
-** TODO **
+## TODO ##
 
 * make it work
+* add magic & BPF
+* reply to normal pings
+* ctrl-C handler
 * code documentation
 * tests (valgrind? utests?)
-* reply to normal pings
 * android
-* add magic & BPF
 * MTU discovery
 * parse dns
 * timer adjustments
 * real authentication
-* increase speed using rx/tx rings and zero-copy
+* increase speed using rx/tx rings and zero-copy (will it improve anything at all? what's my bottleneck?)

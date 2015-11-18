@@ -10,22 +10,34 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include <sys/types.h>
+#include <event2/event.h>
 
 #define PINGTUN_POS_ARGS_NUM (2)
 
 typedef struct {
-	int		ping_reply;
+	struct {
+		int	has_server:1;
+	} flags;
 	struct	in_addr server;
 	struct	in_addr address;
 	struct 	in_addr	netmask;
-
 } pingtun_opts_t;
+
+typedef struct {
+	pingtun_opts_t opts;
+	pingtun_tun_t *tun;
+	pingtun_ping_t *ping;
+	struct event *ping_snd_ev;
+	struct event *ping_rcv_ev;
+	struct event *tun_read_ev;
+	struct event *tun_write_ev;
+	struct event_base *base_ev;
+} pingtun_t;
 
 static void usage() {
 	fprintf(stderr, 
-"usage:\t"	"pingtun [-s|--server <address>] [-p|--ping-reply] <address> <netmask>\n"
+"usage:\t"	"pingtun [-s|--server <address>] <address> <netmask>\n"
 	"\t-s|--server <address>\t"	"sets the adress of the ping tunnel\n"
-	"\t-p|--ping-reply\t\t"		"reply to pings which are not from the tunnel\n"
 	);
 
 	exit(EXIT_FAILURE);
@@ -36,6 +48,7 @@ static void parse_opt_server(pingtun_opts_t *opts) {
 		ERR("invalid server address %s", optarg);
 		usage();
 	}
+	opts->flags.has_server = 1;
 }
 
 static void parse_opt_netmask(pingtun_opts_t *opts, char *arg) {
@@ -60,21 +73,18 @@ static void parse_opts(pingtun_opts_t *opts, int argc, char **argv) {
 		{0,0,0,0}
 	};
 
-	c = getopt_long(argc, argv, "s:p", long_options,  NULL);
+	c = getopt_long(argc, argv, "s:", long_options,  NULL);
 	while (-1 != c) {
 		switch (c) {
 			case 's':
 				parse_opt_server(opts);
-				break;
-			case 'p':
-				opts->ping_reply = 1;
 				break;
 			default:
 				ERR("unknown options: %d", c);
 				usage();
 		}
 
-		c = getopt_long(argc, argv, "s:p", long_options,  NULL);
+		c = getopt_long(argc, argv, "s:", long_options,  NULL);
 	}
 
 	if (argc < optind + PINGTUN_POS_ARGS_NUM) {
@@ -89,47 +99,102 @@ static void parse_opts(pingtun_opts_t *opts, int argc, char **argv) {
 	parse_opt_netmask(opts, argv[optind+1]);
 }
 
-int main(int argc, char **argv) {
-	pingtun_opts_t options = {0};
-	pingtun_tun_t *tun = NULL;
-	pingtun_ping_t *ping = NULL;
-	size_t len = -1;
-	size_t i = 0;
-	ssize_t mtu = -1;
-	const struct icmphdr *icmphdr_p = NULL;
-	const void *data = NULL;
-	struct sockaddr_in sockaddr = {0};
+static void ping_ev_cb(evutil_socket_t fd, short events, void *handle) {
+	return;
+}
 
-	DBG("parsing options");
-	parse_opts(&options, argc, argv);
-	
-	//TODO: if no server set, ignore pings
-	//TODO: echo 0 > /proc/sys/net/ipv4/icmp_echo_ignore_all
-	//TODO:   (and save original value for restoration)
-	
-	DBG("initializing ping socket");
-	if (0 != pingtun_ping_init(&ping)) {
+static void tun_ev_cb(evutil_socket_t fd, short events, void *handle) {
+	return;
+}
+
+static int init_base_ev(pingtun_t *handle) {
+	handle->base_ev = event_base_new();
+	if (NULL == handle->base_ev) {
+		ERR("initializing event base failed");
+		return -1;
+	}
+
+	return 0;
+}
+
+static int init_ping(pingtun_t *handle) {
+	if (0 != pingtun_ping_init(&handle->ping)) {
 		ERR("initializing ping socket failed.");
 		return -1;
 	}
-	mtu = pingtun_ping_mtu(ping);
 
-	DBG("initializing tun device");
-	if (0 != pingtun_tun_init(&tun, &options.address, &options.netmask, mtu)) {
+	handle->ping_rcv_ev = event_new(handle->base_ev,
+			pingtun_ping_fd(handle->ping), EV_READ, ping_ev_cb, handle);
+	if (NULL == handle->ping_rcv_ev) {
+		ERR("initializing event failed");
+		return -1;
+	}
+	handle->ping_snd_ev = event_new(handle->base_ev,
+			pingtun_ping_fd(handle->ping), EV_WRITE, ping_ev_cb, handle);
+	if (NULL == handle->ping_snd_ev) {
+		ERR("initializing event failed");
+		return -1;
+	}
+
+	return 0;
+}
+
+static int init_tun(pingtun_t *handle) {
+	short events;
+	size_t mtu = pingtun_ping_mtu(handle->ping);
+
+	if (0 != pingtun_tun_init(&handle->tun, &handle->opts.address,
+				&handle->opts.netmask, mtu)) {
 		ERR("initializing tun device failed.");
 		return -1;
 	}
-	
-	while(1) {
-		data = pingtun_ping_data(ping, &len);
-		for (i = 0; i < len; i++) {
-			*(uint8_t *)(data + i) = i;
-		}
-		sockaddr.sin_addr = options.server;
-		pingtun_ping_req(ping, data, len, &sockaddr);
-		sleep(1);
-		pingtun_ping_rcv(ping, &icmphdr_p, &data, &sockaddr);
+
+	events = EV_READ;
+	if (handle->opts.flags.has_server) {
+		events |= EV_PERSIST;
 	}
+	handle->tun_read_ev = event_new(handle->base_ev,
+			pingtun_tun_fd(handle->tun), events, tun_ev_cb, handle);
+	if (NULL == handle->tun_read_ev) {
+		ERR("initializing event failed");
+		return -1;
+	}
+	
+	handle->tun_write_ev = event_new(handle->base_ev,
+			pingtun_tun_fd(handle->tun), EV_WRITE, tun_ev_cb, handle);
+	if (NULL == handle->tun_write_ev) {
+		ERR("initializing event failed");
+		return -1;
+	}
+
+	return 0;
+}
+
+int main(int argc, char **argv) {
+	pingtun_t handle;
+	memset(&handle, 0, sizeof(handle));
+
+	DBG("parsing options");
+	parse_opts(&handle.opts, argc, argv);
+	
+	//TODO: echo 0 > /proc/sys/net/ipv4/icmp_echo_ignore_all
+	//TODO:   (and save original value for restoration)
+	DBG("initializing event base");
+	if (0 != init_base_ev(&handle)) {
+		return -1;
+	}
+
+	DBG("initializing ping socket");
+	if (0 != init_ping(&handle)) {
+		return -1;
+	}
+
+	DBG("initializing tun device");
+	if (0 != init_tun(&handle)) {
+		return -1;
+	}
+
+	event_base_dispatch(handle.base_ev);
 	return 0;
 }
 
