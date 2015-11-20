@@ -7,6 +7,26 @@
 #include <string.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <linux/filter.h>
+
+struct sock_filter filter_echo[] = {
+	#include "../bpfgen/bpf_icmp_echo.prog"
+};
+
+struct sock_filter filter_echoreply[] = {
+	#include "../bpfgen/bpf_icmp_echoreply.prog"
+};
+
+struct sock_fprog progs[] = {
+	{
+	.len = sizeof(filter_echo) / sizeof(*filter_echo),
+	.filter = filter_echo,
+	},
+	{
+	.len = sizeof(filter_echoreply) / sizeof(*filter_echoreply),
+	.filter = filter_echoreply,
+	},
+};
 
 static void icmp_header_init(struct icmphdr *header) {
 	header->type = ICMP_ECHO;
@@ -82,7 +102,7 @@ static ssize_t pingtun_ping_sendto(pingtun_ping_t *handle, uint8_t icmp_type,
 			(const struct sockaddr *) dest_addr, sizeof(*dest_addr));
 }
 
-int pingtun_ping_init(pingtun_ping_t **handle) {
+int pingtun_ping_init(pingtun_ping_t **handle, pingtun_ping_filter_e filter) {
 	int ret = -1;
 
 	*handle = calloc(1, sizeof(pingtun_ping_t));
@@ -102,6 +122,11 @@ int pingtun_ping_init(pingtun_ping_t **handle) {
 	if (0 > (*handle)->fd) {
 		ERR("opening socket failed. error: %s.", strerror(errno));
 		goto exit;
+	}
+
+	if (0 != setsockopt((*handle)->fd, SOL_SOCKET, SO_ATTACH_FILTER,
+				&progs[filter], sizeof(progs[filter]))) {
+
 	}
 
 	(*handle)->ip_header = (*handle)->packet;

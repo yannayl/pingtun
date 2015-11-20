@@ -23,7 +23,13 @@ typedef struct {
 	void			*data;
 } pingtun_ping_t;
 
-int pingtun_ping_init(pingtun_ping_t **handle);
+typedef enum {
+	PINGTUN_PING_FILTER_ECHO,
+	PINGTUN_PING_FILTER_ECHOREPLY,
+	PINGTUN_PING_FILTER_MAX,
+} pingtun_ping_filter_e;
+
+int pingtun_ping_init(pingtun_ping_t **handle, pingtun_ping_filter_e filter);
 int pingtun_ping_fd(pingtun_ping_t *handle);
 size_t pingtun_ping_mtu(pingtun_ping_t *handle);
 void *pingtun_ping_data(pingtun_ping_t *handle, size_t *len);

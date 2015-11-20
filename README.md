@@ -25,7 +25,6 @@ sudo pingtun --server $SERVER_IP 10.9.0.1 255.255.255.252
 * make it work
 * add magic & BPF
 * reply to normal pings
-* ctrl-C handler
 * code documentation
 * tests (valgrind? utests?)
 * android

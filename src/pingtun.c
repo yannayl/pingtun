@@ -22,27 +22,30 @@
 typedef struct {
 	struct {
 		int	has_server:1;
+		int clinet_only:1;
 		int received_ping:1;
 		int ignore_pings:1;
 		int changed_ignore_pings:1;
 	} flags;
 
-	struct	in_addr server;
+	struct	sockaddr_in server;
 	struct	in_addr address;
 	struct 	in_addr	netmask;
 
-	pingtun_tun_t *tun;
-	pingtun_ping_t *ping;
-	struct event *ping_snd_ev;
-	struct event *ping_rcv_ev;
-	struct event *tun_read_ev;
-	struct event *tun_write_ev;
+	struct ping_struct {
+		pingtun_ping_t *ping;
+		struct event *snd_ev;
+		struct event *rcv_ev;
+	} sping, cping;
+
+	struct {	
+		pingtun_tun_t *tun;
+		struct event *read_ev;
+		struct event *write_ev;
+	} tun;
+
 	struct event *sigint_ev;
 	struct event_base *base_ev;
-
-	ssize_t len;
-	const void *data;
-	struct sockaddr_in reply_addr;
 } pingtun_t;
 
 static void usage() {
@@ -55,10 +58,12 @@ static void usage() {
 }
 
 static void parse_opt_server(pingtun_t *handle) {
-	if (0 == inet_aton(optarg, &(handle->server))) {
+	struct in_addr server_addr = {0};
+	if (0 == inet_aton(optarg, &server_addr)) {
 		ERR("invalid server address %s", optarg);
 		usage();
 	}
+	handle->server.sin_addr = server_addr;
 	handle->flags.has_server = 1;
 }
 
@@ -78,24 +83,28 @@ static void parse_opt_address(pingtun_t *handle, char *arg) {
 
 static void parse_opts(pingtun_t *handle, int argc, char **argv) {
 	int c = -1;
+	const char shortopts[] = "s:c";
 	static const struct option long_options[] = {
 		{"server", required_argument, 0, 's'},
-		{"ping-reply", required_argument, 0, 'p'},
+		{"client-only", required_argument, 0, 'c'},
 		{0,0,0,0}
 	};
 
-	c = getopt_long(argc, argv, "s:", long_options,  NULL);
+	c = getopt_long(argc, argv, shortopts, long_options,  NULL);
 	while (-1 != c) {
 		switch (c) {
 			case 's':
 				parse_opt_server(handle);
+				break;
+			case 'c':
+				handle->flags.clinet_only = 1;
 				break;
 			default:
 				ERR("unknown options: %d", c);
 				usage();
 		}
 
-		c = getopt_long(argc, argv, "s:", long_options,  NULL);
+		c = getopt_long(argc, argv, shortopts, long_options,  NULL);
 	}
 
 	if (argc < optind + PINGTUN_POS_ARGS_NUM) {
@@ -174,50 +183,10 @@ static void reset_ignore_echo(pingtun_t *handle) {
 }
 
 static void ping_ev_cb(evutil_socket_t fd, short events, void *pt_handle) {
-	pingtun_t *handle = (pingtun_t *) pt_handle;
-	const struct icmphdr *icmp_header = NULL;
-
-	if (events & EV_READ) {
-		handle->len = pingtun_ping_rcv(handle->ping, &icmp_header, &handle->data,
-				&handle->reply_addr);
-		if (0 > handle->len) {
-			//TODO: handle errors
-			exit(EXIT_FAILURE);
-		}
-
-		if (icmp_header->type == ICMP_ECHO) {
-			handle->flags.received_ping = 1;
-		}
-
-		if (0 != event_add(handle->tun_write_ev, NULL)) {
-			//TODO: handle errors
-			exit(EXIT_FAILURE);
-		}
-	}
-
-	/* else? */ if (events & EV_WRITE) {
-		/* TODO */
-	}
+	return;
 }
 
 static void tun_ev_cb(evutil_socket_t fd, short events, void *pt_handle) {
-	pingtun_t *handle = (pingtun_t *) pt_handle;
-
-	if (events & EV_WRITE) {
-		if (0 > pingtun_tun_write(handle->tun, handle->data, handle->len)) {
-			//TODO: handle errors
-			exit(EXIT_FAILURE);
-		}
-		if (0 != event_add(handle->ping_rcv_ev, NULL)) {
-			//TODO: handle errors
-			exit(EXIT_FAILURE);
-		}
-	}
-
-	/* else? */ if (events & EV_WRITE) {
-		/* TODO */
-	}
-
 	return;
 }
 
@@ -239,22 +208,29 @@ static int init_base_ev(pingtun_t *handle) {
 	return 0;
 }
 
-static int init_ping(pingtun_t *handle) {
-	if (0 != pingtun_ping_init(&handle->ping)) {
+static int init_ping(pingtun_t *handle, struct ping_struct *ping) {
+	pingtun_ping_filter_e filter;
+	if (&handle->sping == ping) {
+		filter = PINGTUN_PING_FILTER_ECHO;
+	} else {
+		filter = PINGTUN_PING_FILTER_ECHO;
+	}
+
+	if (0 != pingtun_ping_init(&ping->ping, filter)) {
 		ERR("initializing ping socket failed.");
 		return -1;
 	}
 
-	handle->ping_rcv_ev = event_new(handle->base_ev,
-			pingtun_ping_fd(handle->ping), EV_READ, ping_ev_cb, handle);
-	if (NULL == handle->ping_rcv_ev) {
+	ping->rcv_ev = event_new(handle->base_ev, pingtun_ping_fd(ping->ping),
+			EV_READ, ping_ev_cb, handle);
+	if (NULL == ping->rcv_ev) {
 		ERR("initializing event failed");
 		return -1;
 	}
 	
-	handle->ping_snd_ev = event_new(handle->base_ev,
-			pingtun_ping_fd(handle->ping), EV_WRITE, ping_ev_cb, handle);
-	if (NULL == handle->ping_snd_ev) {
+	ping->snd_ev = event_new(handle->base_ev, pingtun_ping_fd(ping->ping),
+			EV_WRITE, ping_ev_cb, handle);
+	if (NULL == ping->snd_ev) {
 		ERR("initializing event failed");
 		return -1;
 	}
@@ -264,9 +240,15 @@ static int init_ping(pingtun_t *handle) {
 
 static int init_tun(pingtun_t *handle) {
 	short events;
-	size_t mtu = pingtun_ping_mtu(handle->ping);
+	size_t mtu = 0;
+	
+	if (handle->flags.clinet_only) {
+		mtu = pingtun_ping_mtu(handle->sping.ping);
+	} else {
+		mtu = pingtun_ping_mtu(handle->cping.ping);
+	}
 
-	if (0 != pingtun_tun_init(&handle->tun, &handle->address,
+	if (0 != pingtun_tun_init(&handle->tun.tun, &handle->address,
 				&handle->netmask, mtu)) {
 		ERR("initializing tun device failed.");
 		return -1;
@@ -276,16 +258,16 @@ static int init_tun(pingtun_t *handle) {
 	if (handle->flags.has_server) {
 		events |= EV_PERSIST;
 	}
-	handle->tun_read_ev = event_new(handle->base_ev,
-			pingtun_tun_fd(handle->tun), events, tun_ev_cb, handle);
-	if (NULL == handle->tun_read_ev) {
+	handle->tun.read_ev = event_new(handle->base_ev,
+			pingtun_tun_fd(handle->tun.tun), events, tun_ev_cb, handle);
+	if (NULL == handle->tun.read_ev) {
 		ERR("initializing event failed");
 		return -1;
 	}
 
-	handle->tun_write_ev = event_new(handle->base_ev,
-			pingtun_tun_fd(handle->tun), EV_WRITE, tun_ev_cb, handle);
-	if (NULL == handle->tun_write_ev) {
+	handle->tun.write_ev = event_new(handle->base_ev,
+			pingtun_tun_fd(handle->tun.tun), EV_WRITE, tun_ev_cb, handle);
+	if (NULL == handle->tun.write_ev) {
 		ERR("initializing event failed");
 		return -1;
 	}
@@ -307,13 +289,13 @@ static int add_events(pingtun_t *handle) {
 		return -1;
 	}
 
-	if (0 != event_add(handle->ping_rcv_ev, NULL)) {
+	if (0 != event_add(handle->sping.rcv_ev, NULL)) {
 		ERR("failed adding event");
 		return -1;
 	}
 
 	if (handle->flags.has_server) {
-		if (0 != event_add(handle->tun_read_ev, NULL)) {
+		if (0 != event_add(handle->tun.read_ev, NULL)) {
 			ERR("failed adding event");
 			return -1;
 		}
@@ -340,7 +322,7 @@ int main(int argc, char **argv) {
 	}
 
 	DBG("initializing ping socket");
-	if (0 != init_ping(&handle)) {
+	if (0 != init_ping(&handle, &handle.sping)) {
 		goto exit;
 	}
 
