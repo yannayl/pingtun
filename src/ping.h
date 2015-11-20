@@ -18,9 +18,8 @@ typedef struct {
 	int 			fd;
 	void 			*packet;
 	size_t 			packet_size;
-	struct iphdr 	*ip_header;
-	struct icmphdr	*icmp_header;
 	void			*data;
+	ssize_t			len;
 } pingtun_ping_t;
 
 typedef enum {
@@ -32,13 +31,15 @@ typedef enum {
 int pingtun_ping_init(pingtun_ping_t **handle, pingtun_ping_filter_e filter);
 int pingtun_ping_fd(pingtun_ping_t *handle);
 size_t pingtun_ping_mtu(pingtun_ping_t *handle);
-void *pingtun_ping_data(pingtun_ping_t *handle, size_t *len);
-ssize_t pingtun_ping_rpl(pingtun_ping_t *handle, const void *buf, size_t len,
+void *pingtun_ping_data(pingtun_ping_t *handle);
+size_t pingtun_ping_capacity(pingtun_ping_t *handle);
+size_t pingtun_ping_len(pingtun_ping_t *handle);
+int pingtun_ping_len_set(pingtun_ping_t *handle, size_t len);
+int pingtun_ping_rpl(pingtun_ping_t *handle,
 		const struct sockaddr_in *dest_addr);
-ssize_t pingtun_ping_req(pingtun_ping_t *handle, const void *buf, size_t len,
+int pingtun_ping_req(pingtun_ping_t *handle,
 		const struct sockaddr_in *dest_addr);
-ssize_t pingtun_ping_rcv(pingtun_ping_t *handle, const struct icmphdr **header,
-		const void **data, struct sockaddr_in *src_addr);
+int pingtun_ping_rcv(pingtun_ping_t *handle, struct sockaddr_in *src_addr);
 void pingtun_ping_fini(pingtun_ping_t **handle);
 
 #ifdef __cplusplus
