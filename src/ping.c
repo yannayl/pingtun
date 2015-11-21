@@ -130,11 +130,11 @@ int pingtun_ping_init(pingtun_ping_t **handle, pingtun_ping_filter_e filter) {
 		goto exit;
 	}
 
-//	if (0 != setsockopt((*handle)->fd, SOL_SOCKET, SO_ATTACH_FILTER,
-//				&progs[filter], sizeof(progs[filter]))) {
-//		ERR("failed attaching filter");
-//		goto exit;
-//	}
+	if (0 != setsockopt((*handle)->fd, SOL_SOCKET, SO_ATTACH_FILTER,
+				&progs[filter], sizeof(progs[filter]))) {
+		ERR("failed attaching filter");
+		goto exit;
+	}
 
 	icmp_header_init(*handle);
 
