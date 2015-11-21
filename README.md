@@ -5,10 +5,11 @@ In short, it tunnels ipv4 traffic over icmp echo requests and replies (pings).
 Thus, bypassing badly configured firewalls and captive portals.
 
 ##### Some of pingtun's distinguished features: ####
-* user-space zero copy
+* no need to configure iptables/proc/tun/anything
 * can act as client and server simultaneously
 * periodic echo requests (bypass firewalls which prevent unsolicited replies)
 * single-threaded event driven architecture
+* user-space zero copy
 * [FUTURE] authentication
 * [FUTURE] reply to non-tunneling pings
 * [FUTURE] MTU discovery
