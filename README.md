@@ -1,35 +1,44 @@
-pingtun - The *Best* ICMP tunnel
-==================================
+# pingtun #
+**pingtun** is a well-written, well-structured icmp tunnel.
+
+In short, it tunnels ipv4 traffic over icmp echo requests and replies (pings).
+Thus, bypassing badly configured firewalls and captive portals.
+
+##### Some of pingtun's distinguished features: ####
+* user-space zero copy
+* can act as client and server simultaneously
+* periodic echo requests (bypass firewalls which prevent unsolicited replies)
+* single-threaded event driven architecture
+* [FUTURE] authentication
+* [FUTURE] reply to non-tunneling pings
+* [FUTURE] MTU discovery
+* [FUTURE] DNS resolution
+* [FUTURE] request timer adjustments according to congestion
+
+## Dependencies ##
+* libevent2
+* tun driver
+* linux socket filter
+
 
 ## Build ##
 ```
-cmake . && make
+cmake .
+make
+sudo make install
 ```
 
-## Run  ##
-
+## Run ##
 on the server:
 ```
 sudo pingtun 10.9.0.1 255.255.255.252
 ```
 on the client:
 ```
-sudo pingtun --server $SERVER_IP 10.9.0.1 255.255.255.252
+sudo pingtun --client-only --server $SERVER_IP 10.9.0.1 255.255.255.252
 ```
 
 ## Platforms ##
 * GNU/Linux
+* [FUTURE] android
 
-## TODO ##
-
-* better error handling
-* add magic to protocol
-* reply to normal pings
-* code documentation
-* tests (valgrind? utests?)
-* android
-* MTU discovery
-* parse dns
-* timer adjustments
-* real authentication
-* increase speed using rx/tx rings and zero-copy (will it improve anything at all? what's my bottleneck?)
