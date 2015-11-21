@@ -6,11 +6,11 @@ Thus, bypassing badly configured firewalls and captive portals.
 
 ##### Some of pingtun's distinguished features: ####
 * no need to configure iptables/proc/tun/anything
-* can act as client and server simultaneously
+* peer-to-peer and client-server mode
 * periodic echo requests (bypass firewalls which prevent unsolicited replies)
 * single-threaded event driven architecture
 * user-space zero copy
-* [FUTURE] authentication
+* [FUTURE] strong authentication
 * [FUTURE] reply to non-tunneling pings
 * [FUTURE] MTU discovery
 * [FUTURE] DNS resolution
