@@ -22,7 +22,6 @@ sudo pingtun --server $SERVER_IP 10.9.0.1 255.255.255.252
 
 ## TODO ##
 
-* make it work
 * better error handling
 * add magic to protocol
 * reply to normal pings

@@ -18,7 +18,6 @@ typedef struct {
 	int 			fd;
 	void 			*packet;
 	size_t 			packet_size;
-	void			*data;
 	ssize_t			len;
 } pingtun_ping_t;
 

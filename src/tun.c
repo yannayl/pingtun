@@ -110,10 +110,18 @@ const char *pingtun_tun_name(pingtun_tun_t *handle) {
 }
 
 ssize_t pingtun_tun_read(pingtun_tun_t *handle, void *buf, size_t len) {
-	return read(handle->fd, buf, len);
+	ssize_t ret = read(handle->fd, buf, len);
+	if (0 > ret) {
+		ERR("failed read tun. error: %s.", strerror(errno));
+	}
+	return ret;
 }
 ssize_t pingtun_tun_write(pingtun_tun_t *handle, const void *buf, size_t len) {
-	return write(handle->fd, buf, len);
+	ssize_t ret = write(handle->fd, buf, len);
+	if (0 > ret) {
+		ERR("failed write tun. error: %s.", strerror(errno));
+	}
+	return ret;
 }
 
 void pingtun_tun_fini(pingtun_tun_t **handle) {

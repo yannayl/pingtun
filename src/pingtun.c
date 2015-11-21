@@ -63,6 +63,7 @@ typedef struct {
 				 *sigusr1_ev,
 				 *sigusr2_ev,
 				 *sigstp_ev;
+
 	struct event *echo_timer_ev;
 	struct event_base *base_ev;
 } pingtun_t;
@@ -222,13 +223,38 @@ static void ping_timer_cb(evutil_socket_t fd, short events, void *pt_handle) {
 	}
 }
 
+static void ping_read_cb(pingtun_t *handle, struct ping_struct *ping,
+		struct sockaddr_in *sock_addr) {
+	size_t len = 0;
+
+	if (0 != pingtun_ping_rcv(ping->ping, sock_addr)) {
+		ERR("read failed");
+		exit(EXIT_FAILURE);
+	}
+
+	len = pingtun_ping_len(ping->ping);
+
+	if (0 < len) {
+		ping->direction = DIR_TO_TUN;
+		
+		if (0 != event_add(handle->tun.write_ev, NULL)) {
+			ERR("event add failed");
+			exit(EXIT_FAILURE);
+		}
+	} else {
+		if (0 != event_add(ping->rcv_ev, NULL)) {
+			ERR("event add failed");
+			exit(EXIT_FAILURE);
+		}
+	}
+}
+
 static void sping_ev_cb(evutil_socket_t fd, short events, void *pt_handle) {
 	pingtun_t *handle = (pingtun_t *) pt_handle;
 	struct ping_struct *ping = &handle->sping;
 
 	if (events & EV_WRITE) {
-
-		if (0 != pingtun_ping_rpl(ping->ping, &handle->server)) {
+		if (0 != pingtun_ping_rpl(ping->ping, &handle->reply_addr)) {
 			ERR("write failed");
 			exit(EXIT_FAILURE);
 		}
@@ -242,17 +268,13 @@ static void sping_ev_cb(evutil_socket_t fd, short events, void *pt_handle) {
 	}
 
 	if (events & EV_READ) {
-		// sanity, should never happen
-		if (0 != pingtun_ping_rcv(ping->ping, NULL)) {
-			ERR("read failed");
-			exit(EXIT_FAILURE);
-		}
-		
-		ping->direction = DIR_TO_TUN;
-		
-		if (0 != event_add(handle->tun.write_ev, NULL)) {
-			ERR("event add failed");
-			exit(EXIT_FAILURE);
+		ping_read_cb(handle, ping, &handle->reply_addr);
+
+		if (DIR_NON == ping->direction) {
+			if (0 != event_add(handle->tun.read_ev, NULL)) {
+				ERR("event add failed");
+				exit(EXIT_FAILURE);
+			}
 		}
 	}
 
@@ -289,17 +311,7 @@ static void cping_ev_cb(evutil_socket_t fd, short events, void *pt_handle) {
 	}
 
 	if (events & EV_READ) {
-		if (0 != pingtun_ping_rcv(ping->ping, NULL)) {
-			ERR("read failed");
-			exit(EXIT_FAILURE);
-		}
-		
-		if (0 != event_add(handle->tun.write_ev, NULL)) {
-			ERR("event add failed");
-			exit(EXIT_FAILURE);
-		}
-		
-		ping->direction = DIR_TO_TUN;
+		ping_read_cb(handle, ping, NULL);
 	}
 
 	return;
@@ -309,20 +321,37 @@ static void tun_ev_cb(evutil_socket_t fd, short events, void *pt_handle) {
 	pingtun_t *handle = (pingtun_t *) pt_handle;
 	struct ping_struct *ping = NULL;
 	ssize_t len = -1;
+	const void *data = NULL;
 
 	if (events & EV_WRITE) {
 		if (DIR_TO_TUN == handle->cping.direction) {
 			ping = &handle->cping;
 		} else {
 			ping = &handle->sping;
+			if (0 != event_add(handle->tun.read_ev, NULL)) {
+				ERR("event add failed");
+				exit(EXIT_FAILURE);
+			}
 		}
-		if (0 != pingtun_tun_write(handle->tun.tun,
-					pingtun_ping_data(ping->ping),
-					pingtun_ping_len(ping->ping))) {
+
+		len = pingtun_ping_len(ping->ping);
+		data = pingtun_ping_data(ping->ping);
+		len = pingtun_tun_write(handle->tun.tun, data, len);
+	   if (0 > len)	{
 			ERR("write failed");
 			exit(EXIT_FAILURE);
 		}
+
 		ping->direction = DIR_NON;
+		if (0 != pingtun_ping_len_set(ping->ping, 0)) {
+			ERR("zero pingtun len failed");
+			exit(EXIT_FAILURE);
+		}
+
+		if (0 != event_add(ping->rcv_ev, NULL)) {
+			ERR("add event failed");
+			exit(EXIT_FAILURE);
+		}
 
 		if (handle->flags.ping_timer_expired) {
 			ping_timer_cb(-1, EV_TIMEOUT, pt_handle);
@@ -342,6 +371,7 @@ static void tun_ev_cb(evutil_socket_t fd, short events, void *pt_handle) {
 		len = pingtun_tun_read(handle->tun.tun, 
 				pingtun_ping_data(ping->ping),
 				pingtun_ping_capacity(ping->ping));
+
 
 		if (0 > len) {
 			ERR("read failed");
@@ -420,7 +450,7 @@ static int init_sping(pingtun_t *handle) {
 		ERR("failed adding event");
 		return -1;
 	}
-
+	
 	return 0;
 }
 
@@ -430,7 +460,7 @@ static int init_cping(pingtun_t *handle) {
 		.tv_usec = PING_TIMER_INTERVAL_USEC
 	};
 
-	if (0 != init_ping(handle, &handle->sping, PINGTUN_PING_FILTER_ECHOREPLY,
+	if (0 != init_ping(handle, &handle->cping, PINGTUN_PING_FILTER_ECHOREPLY,
 				cping_ev_cb)) {
 		return -1;
 	}
@@ -519,7 +549,6 @@ static int init_signals(pingtun_t *handle) {
 	PINGTUN_INIT_ADD_SIG(handle, sigterm_ev, SIGTERM, break_cb);
 	PINGTUN_INIT_ADD_SIG(handle, sigusr1_ev, SIGUSR1, break_cb);
 	PINGTUN_INIT_ADD_SIG(handle, sigusr2_ev, SIGUSR2, break_cb);
-	PINGTUN_INIT_ADD_SIG(handle, sigstp_ev, SIGSTOP, break_cb);
 
 	return 0;
 }
@@ -556,7 +585,6 @@ int main(int argc, char **argv) {
 			goto exit;
 		}
 	}
-
 
 	DBG("initializing tun device");
 	if (0 != init_tun(&handle)) {

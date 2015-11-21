@@ -8,6 +8,16 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <linux/filter.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+
+#define pingtun_ping_icmphdr(handle) \
+	((struct icmphdr *) ((handle)->packet + sizeof(struct iphdr)))
+
+#define pingtun_ping_iphdr(handle) \
+	((struct iphdr *) (handle)->packet)
 
 struct sock_filter filter_echo[] = {
 	#include "../bpfgen/bpf_icmp_echo.prog"
@@ -29,11 +39,9 @@ struct sock_fprog progs[] = {
 };
 
 static void icmp_header_init(pingtun_ping_t *handle) {
-	struct icmphdr *header = (struct icmphdr *) (handle->data +
-			sizeof(struct iphdr));
-	header->type = ICMP_ECHO;
-	header->un.echo.id = rand();
-	header->un.echo.sequence = rand();
+	pingtun_ping_icmphdr(handle)->type = ICMP_ECHO;
+	pingtun_ping_icmphdr(handle)->un.echo.id = rand();
+	pingtun_ping_icmphdr(handle)->un.echo.sequence = rand();
 }
 
 static uint16_t checksum_rfc1701(void *data, size_t len) {
@@ -60,23 +68,24 @@ static uint16_t checksum_rfc1701(void *data, size_t len) {
 
 static int pingtun_ping_sendto(pingtun_ping_t *handle,
 		const struct sockaddr_in *dest_addr) {
-	int ret = 0;
-	struct icmphdr *icmp_header = (struct icmphdr *) (handle->data +
-			sizeof(struct iphdr));
+	int ret = -1;
 	
 	handle->len += sizeof(struct icmphdr);
-	icmp_header->checksum = 0;
-	icmp_header->checksum = checksum_rfc1701(icmp_header, handle->len);
+	pingtun_ping_icmphdr(handle)->checksum = 0;
+	pingtun_ping_icmphdr(handle)->checksum = checksum_rfc1701(
+			pingtun_ping_icmphdr(handle), handle->len);
 
-	handle->len = sendto(handle->fd, icmp_header, handle->len, 0,
-			(const struct sockaddr *) dest_addr, sizeof(*dest_addr));
+	handle->len = sendto(handle->fd, pingtun_ping_icmphdr(handle), handle->len,
+			0, (const struct sockaddr *) dest_addr, sizeof(*dest_addr));
 	
 	if (0 > handle->len) {
-		ret = -1;
-	} else {
-		ret = 0;
+		ERR("sendto failed. error: %s.", strerror(errno));
+		goto exit;
 	}
+	
+	ret = 0;
 
+exit:
 	handle->len = 0;
 	return ret;
 }
@@ -103,12 +112,11 @@ int pingtun_ping_init(pingtun_ping_t **handle, pingtun_ping_filter_e filter) {
 		goto exit;
 	}
 
-	if (0 != setsockopt((*handle)->fd, SOL_SOCKET, SO_ATTACH_FILTER,
-				&progs[filter], sizeof(progs[filter]))) {
-
-	}
-
-	(*handle)->data = (*handle)->packet + sizeof(struct icmphdr);
+//	if (0 != setsockopt((*handle)->fd, SOL_SOCKET, SO_ATTACH_FILTER,
+//				&progs[filter], sizeof(progs[filter]))) {
+//		ERR("failed attaching filter");
+//		goto exit;
+//	}
 
 	icmp_header_init(*handle);
 
@@ -129,7 +137,8 @@ size_t pingtun_ping_mtu(pingtun_ping_t *handle) {
 }
 
 void *pingtun_ping_data(pingtun_ping_t *handle) {
-	return handle->packet + sizeof(struct icmphdr) + sizeof(struct iphdr);
+	void *data = handle->packet + sizeof(struct iphdr) + sizeof(struct icmphdr);
+	return data;
 }
 
 int pingtun_ping_len_set(pingtun_ping_t *handle, size_t len) {
@@ -151,18 +160,14 @@ size_t pingtun_ping_len(pingtun_ping_t *handle) {
 
 int pingtun_ping_rpl(pingtun_ping_t *handle,
 		const struct sockaddr_in *dest_addr) {
-	struct icmphdr *icmp_header = (struct icmphdr *) (handle->data +
-			sizeof(struct iphdr));
-	icmp_header->type = ICMP_ECHOREPLY;
+	pingtun_ping_icmphdr(handle)->type = ICMP_ECHOREPLY;
 	return pingtun_ping_sendto(handle, dest_addr);
 }
 
 int pingtun_ping_req(pingtun_ping_t *handle,
 		const struct sockaddr_in *dest_addr) {
-	struct icmphdr *icmp_header = (struct icmphdr *) (handle->data +
-			sizeof(struct iphdr));
-	icmp_header->type = ICMP_ECHO;
-	icmp_header->un.echo.sequence += 1;
+	pingtun_ping_icmphdr(handle)->type = ICMP_ECHO;
+	pingtun_ping_icmphdr(handle)->un.echo.sequence += 1;
 	return pingtun_ping_sendto(handle, dest_addr);
 }
 
@@ -183,12 +188,14 @@ int pingtun_ping_rcv(pingtun_ping_t *handle, struct sockaddr_in *src_addr) {
 		ERR("failed receiving. error: %s.", strerror(errno));
 		goto exit;
 	}
+
 	if (sizeof(struct iphdr) > handle->len) {
 		ERR("received packet is too small for ip");
 		goto exit;
 	}
 	
-	ip_header_size = ((struct iphdr *) (handle->data))->ihl << 2;
+	ip_header_size = pingtun_ping_iphdr(handle)->ihl;
+	ip_header_size <<= 2;
 	if (ip_header_size > handle->len) {
 		ERR("received packet is too small for ip header size");
 		goto exit;
@@ -197,8 +204,9 @@ int pingtun_ping_rcv(pingtun_ping_t *handle, struct sockaddr_in *src_addr) {
 	handle->len -= ip_header_size;
 
 	if (sizeof(struct iphdr) < ip_header_size) {
-		memmove(handle->data + sizeof(struct iphdr),
-				handle->data + ip_header_size, handle->len);
+		DBG("memmove");
+		memmove(pingtun_ping_icmphdr(handle),
+				handle->packet + ip_header_size, handle->len);
 	}
 	
 	if (sizeof(struct icmphdr) > handle->len) {
