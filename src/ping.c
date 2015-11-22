@@ -150,10 +150,6 @@ int pingtun_ping_fd(pingtun_ping_t *handle) {
 	return handle->fd;
 }
 
-size_t pingtun_ping_mtu(pingtun_ping_t *handle) {
-	return handle->packet_size - sizeof(struct iphdr) - sizeof(struct icmphdr);
-}
-
 void *pingtun_ping_data(pingtun_ping_t *handle) {
 	void *data = handle->packet + sizeof(struct iphdr) + sizeof(struct icmphdr);
 	return data;

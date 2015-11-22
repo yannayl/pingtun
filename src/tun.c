@@ -29,6 +29,7 @@
 #include <linux/if_tun.h>
 
 #define TUN_DEV	"/dev/net/tun"
+#define TUN_HEADER_SIZE	(8)
 
 static int set_if_params(pingtun_tun_t *tun, const struct in_addr *address,
 		const struct in_addr *netmask, size_t mtu) {
@@ -63,7 +64,7 @@ static int set_if_params(pingtun_tun_t *tun, const struct in_addr *address,
 		goto exit;
 	}
 	
-	ifr.ifr_mtu = mtu;
+	ifr.ifr_mtu = mtu - TUN_HEADER_SIZE;
 	if (0 != ioctl(sock, SIOCSIFMTU, &ifr)) {
 		ERR("failed set mtu (%zu). error: %s.", mtu, strerror(errno));
 		goto exit;
