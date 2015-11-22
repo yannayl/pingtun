@@ -86,6 +86,15 @@ typedef struct {
 	struct event_base *base_ev;
 } pingtun_t;
 
+typedef enum {
+	PINGTUN_PRIO_READ_LOW,
+	PINGTUN_PRIO_READ_NORMAL,
+	PINGTUN_PRIO_READ_HIGH,
+	PINGTUN_PRIO_WRITE,
+	PINGTUN_PRIO_SIGNAL,
+	PINGTUN_PRIO_MAX
+} pingtun_prio_e;
+
 static void usage() {
 	fprintf(stderr, 
 "usage:\t"	"pingtun [-c|--client-only] [-s|--server <address>] <address> <netmask>\n"
@@ -265,6 +274,11 @@ static void ping_read_cb(pingtun_t *handle, struct ping_struct *ping,
 			ERR("event add failed");
 			exit(EXIT_FAILURE);
 		}
+		
+		if (0 != event_priority_set(ping->rcv_ev, PINGTUN_PRIO_READ_LOW)) {
+			ERR("event set priority failed");
+			exit(EXIT_FAILURE);
+		}
 	}
 }
 
@@ -419,6 +433,11 @@ static void tun_read_cb(evutil_socket_t fd, short events, void *pt_handle) {
 		ERR("event del failed");
 		exit(EXIT_FAILURE);
 	}
+
+	if (0 != event_priority_set(ping->rcv_ev, PINGTUN_PRIO_READ_HIGH)) {
+		ERR("event set priority failed");
+		exit(EXIT_FAILURE);
+	}
 }
 
 static void break_cb(evutil_socket_t signal, short events, void *pt_handle) {
@@ -434,6 +453,11 @@ static int init_base_ev(pingtun_t *handle) {
 	handle->base_ev = event_base_new();
 	if (NULL == handle->base_ev) {
 		ERR("initializing event base failed");
+		return -1;
+	}
+
+	if (0 != event_base_priority_init(handle->base_ev, PINGTUN_PRIO_MAX)) {
+		ERR("failed to set base priority");
 		return -1;
 	}
 
@@ -454,11 +478,21 @@ static int init_ping(pingtun_t *handle, struct ping_struct *ping,
 		ERR("initializing event failed");
 		return -1;
 	}
+
+	if (0 != event_priority_set(ping->rcv_ev, PINGTUN_PRIO_READ_NORMAL)) {
+		ERR("event set priority failed");
+		return -1;
+	}
 	
 	ping->snd_ev = event_new(handle->base_ev, pingtun_ping_fd(ping->ping),
 			EV_WRITE, write_cb, handle);
 	if (NULL == ping->snd_ev) {
 		ERR("initializing event failed");
+		return -1;
+	}
+	
+	if (0 != event_priority_set(ping->snd_ev, PINGTUN_PRIO_WRITE)) {
+		ERR("event set priority failed");
 		return -1;
 	}
 
@@ -496,6 +530,11 @@ static int init_cping(pingtun_t *handle) {
 		ERR("initializing ping timer failed");
 		return -1;
 	}
+	
+	if (0 != event_priority_set(handle->echo_timer_ev, PINGTUN_PRIO_WRITE)) {
+		ERR("event set priority failed");
+		return -1;
+	}
 
 	if (0 != event_add(handle->echo_timer_ev, &interval)) {
 		ERR("failed adding event");
@@ -526,11 +565,21 @@ static int init_tun(pingtun_t *handle) {
 		ERR("initializing event failed");
 		return -1;
 	}
+	
+	if (0 != event_priority_set(handle->tun.read_ev, PINGTUN_PRIO_READ_NORMAL)) {
+		ERR("event set priority failed");
+		return -1;
+	}
 
 	handle->tun.write_ev = event_new(handle->base_ev,
 			pingtun_tun_fd(handle->tun.tun), EV_WRITE, tun_write_cb, handle);
 	if (NULL == handle->tun.write_ev) {
 		ERR("initializing event failed");
+		return -1;
+	}
+	
+	if (0 != event_priority_set(handle->tun.write_ev, PINGTUN_PRIO_WRITE)) {
+		ERR("event set priority failed");
 		return -1;
 	}
 
@@ -554,6 +603,11 @@ static int init_tun(pingtun_t *handle) {
 		if (NULL == (handle)->sigev) {\
 			ERR("initializing event failed");\
 				return -1;\
+		}\
+		\
+		if (0 != event_priority_set((handle)->sigev, PINGTUN_PRIO_SIGNAL)) {\
+			ERR("failed adding event");\
+			return -1;\
 		}\
 		\
 		if (0 != evsignal_add((handle)->sigev, NULL)) {\
