@@ -95,6 +95,7 @@ typedef enum {
 	PINGTUN_PRIO_MAX
 } pingtun_prio_e;
 
+
 static void usage() {
 	fprintf(stderr, 
 "usage:\t"	"pingtun [-c|--client-only] [-s|--server <address>] <address> <netmask>\n"
@@ -243,11 +244,18 @@ static void reset_ignore_echo(pingtun_t *handle) {
 static void ping_timer_cb(evutil_socket_t fd, short events, void *pt_handle) {
 	pingtun_t *handle = (pingtun_t *) pt_handle;
 	handle->flags.ping_timer_expired = 1;
-	if (STATE_TO_TUN != handle->cping.state) {
-		if (0 != event_add(handle->cping.snd_ev, NULL)) {
-			ERR("event add failed");
-			exit(EXIT_FAILURE);
-		}
+	if (STATE_NON != handle->cping.state) {
+		return;
+	}
+
+	if (0 != event_add(handle->cping.snd_ev, NULL)) {
+		ERR("event add failed");
+		exit(EXIT_FAILURE);
+	}
+	
+	if (0 != event_del(handle->cping.rcv_ev)) {
+		ERR("event del failed");
+		exit(EXIT_FAILURE);
 	}
 }
 
@@ -364,15 +372,15 @@ static void tun_write_cb(evutil_socket_t fd, short events, void *pt_handle) {
 
 	if (STATE_TO_TUN == handle->cping.state) {
 		ping = &handle->cping;
-		if (handle->flags.ping_timer_expired) {
-			ping_timer_cb(-1, EV_TIMEOUT, pt_handle);
-		}
-	} else {
+	} else if (STATE_TO_TUN == handle->sping.state) {
 		ping = &handle->sping;
 		if (0 != event_add(ping->rcv_ev, NULL)) {
 			ERR("add event failed");
 			exit(EXIT_FAILURE);
 		}
+	} else {
+		ERR("write event cb invoked with no data");
+		return;
 	}
 
 	len = pingtun_ping_len(ping->ping);
@@ -389,6 +397,10 @@ static void tun_write_cb(evutil_socket_t fd, short events, void *pt_handle) {
 		exit(EXIT_FAILURE);
 	}
 
+	if (handle->flags.ping_timer_expired && (ping == &handle->cping)) {
+		ping_timer_cb(-1, EV_TIMEOUT, handle);
+	}
+	
 	if (0 != event_add(handle->tun.read_ev, NULL)) {
 		ERR("event add failed");
 		exit(EXIT_FAILURE);

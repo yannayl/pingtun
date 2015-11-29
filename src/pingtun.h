@@ -26,7 +26,8 @@ extern "C" {
 #include <stdio.h>
 
 #define LOG(format, ...)\
-	do { fprintf(stderr, "%s:%d: " format "\n", __FILE__, __LINE__, ##__VA_ARGS__); } while (0)
+	do { fprintf(stderr, "%s:%d:%s: " format "\n", __FILE__, __LINE__,\
+			__func__, ##__VA_ARGS__); } while (0)
 
 #define ERR(format, ...)\
 	LOG("ERR: " format, ##__VA_ARGS__)
