@@ -46,7 +46,6 @@ typedef struct {
 	struct {
 		int	is_client:1;
 		int is_server:1;
-		int received_ping:1;
 		int ignore_pings:1;
 		int changed_ignore_pings:1;
 		int ping_timer_expired:1;
@@ -252,6 +251,7 @@ static void ping_timer_cb(evutil_socket_t fd, short events, void *pt_handle) {
 		ERR("event add failed");
 		exit(EXIT_FAILURE);
 	}
+	handle->cping.state = STATE_FROM_TUN;
 	
 	if (0 != event_del(handle->cping.rcv_ev)) {
 		ERR("event del failed");
@@ -270,23 +270,25 @@ static void ping_read_cb(pingtun_t *handle, struct ping_struct *ping,
 
 	len = pingtun_ping_len(ping->ping);
 
-	if (0 < len) {
-		ping->state = STATE_TO_TUN;
-		
-		if (0 != event_add(handle->tun.write_ev, NULL)) {
-			ERR("event add failed");
-			exit(EXIT_FAILURE);
-		}
-		
-		if (0 != event_del(handle->tun.read_ev)) {
-			ERR("event add failed");
-			exit(EXIT_FAILURE);
-		}
-		
-		if (0 != event_priority_set(ping->rcv_ev, PINGTUN_PRIO_READ_LOW)) {
-			ERR("event set priority failed");
-			exit(EXIT_FAILURE);
-		}
+	if (0 == len) {
+		return;
+	}
+
+	ping->state = STATE_TO_TUN;
+	
+	if (0 != event_add(handle->tun.write_ev, NULL)) {
+		ERR("event add failed");
+		exit(EXIT_FAILURE);
+	}
+	
+	if (0 != event_del(handle->tun.read_ev)) {
+		ERR("event add failed");
+		exit(EXIT_FAILURE);
+	}
+	
+	if (0 != event_priority_set(ping->rcv_ev, PINGTUN_PRIO_READ_LOW)) {
+		ERR("event set priority failed");
+		exit(EXIT_FAILURE);
 	}
 }
 
