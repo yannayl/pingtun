@@ -41,7 +41,7 @@
 #define PING_TIMER_INTERVAL_MAX_USEC (0)
 
 #define PING_TIMER_INTERVAL_MIN_SEC (0)
-#define PING_TIMER_INTERVAL_MIN_USEC (50 * 1000)
+#define PING_TIMER_INTERVAL_MIN_USEC (1000)
 
 typedef struct {
 	int ret;
