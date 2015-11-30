@@ -323,6 +323,12 @@ static void sping_read_cb(evutil_socket_t fd, short events, void *pt_handle) {
 	ping_read_cb(handle, ping, &handle->reply_addr);
 
 	if (STATE_NON != ping->state) {
+		if (handle->flags.is_client) {
+			if (0 != event_del(handle->cping.rcv_ev)) {
+				ERR("event del failed");
+				exit(EXIT_FAILURE);
+			}
+	}
 		return;
 	}
 
@@ -414,6 +420,13 @@ static void cping_read_cb(evutil_socket_t fd, short events, void *pt_handle) {
 	ping_read_cb(handle, &handle->cping, NULL);
 	if (STATE_TO_TUN == handle->cping.state) {
 		handle->flags.received_data = 1;
+	}
+	
+	if ((handle->flags.is_server) && (STATE_NON != handle->cping.state)) {
+		if (0 != event_del(handle->sping.rcv_ev)) {
+			ERR("event del failed");
+			exit(EXIT_FAILURE);
+		}
 	}
 }
 
