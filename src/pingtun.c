@@ -37,8 +37,11 @@
 #define PATH_ICMP_ECHO_IGNORE "/proc/sys/net/ipv4/icmp_echo_ignore_all"
 #define PINGTUN_POS_ARGS_NUM (2)
 
-#define PING_TIMER_INTERVAL_SEC (1)
-#define PING_TIMER_INTERVAL_USEC (0)
+#define PING_TIMER_INTERVAL_MAX_SEC (3)
+#define PING_TIMER_INTERVAL_MAX_USEC (0)
+
+#define PING_TIMER_INTERVAL_MIN_SEC (0)
+#define PING_TIMER_INTERVAL_MIN_USEC (50 * 1000)
 
 typedef struct {
 	int ret;
@@ -49,6 +52,7 @@ typedef struct {
 		int ignore_pings:1;
 		int changed_ignore_pings:1;
 		int ping_timer_expired:1;
+		int received_data:1;
 	} flags;
 
 	struct	sockaddr_in server;
@@ -73,6 +77,11 @@ typedef struct {
 		struct event *write_ev;
 	} tun;
 
+	struct {
+		struct event *ev;	
+		struct timeval interval;
+	} echo_timer;
+
 	struct event *sigint_ev,
 				 *sighup_ev,
 				 *sigpipe_ev,
@@ -81,7 +90,6 @@ typedef struct {
 				 *sigusr2_ev,
 				 *sigstp_ev;
 
-	struct event *echo_timer_ev;
 	struct event_base *base_ev;
 } pingtun_t;
 
@@ -240,7 +248,7 @@ static void reset_ignore_echo(pingtun_t *handle) {
 	close(fd);
 }
 
-static void ping_timer_cb(evutil_socket_t fd, short events, void *pt_handle) {
+static void echo_timer_cb(evutil_socket_t fd, short events, void *pt_handle) {
 	pingtun_t *handle = (pingtun_t *) pt_handle;
 	handle->flags.ping_timer_expired = 1;
 	if (STATE_NON != handle->cping.state) {
@@ -329,27 +337,67 @@ static void sping_read_cb(evutil_socket_t fd, short events, void *pt_handle) {
 	}
 }
 
+static void echo_timer_interval_increase(pingtun_t *handle) {
+	handle->echo_timer.interval.tv_sec *= 2;
+	handle->echo_timer.interval.tv_usec *= 2;
+
+	if (1000 * 1000 <= handle->echo_timer.interval.tv_usec) {
+		handle->echo_timer.interval.tv_usec -= 1000 * 1000;
+		handle->echo_timer.interval.tv_sec += 1;
+	}
+
+	if ((PING_TIMER_INTERVAL_MAX_SEC < handle->echo_timer.interval.tv_sec) ||
+			((PING_TIMER_INTERVAL_MAX_SEC == handle->echo_timer.interval.tv_sec) &&
+			(PING_TIMER_INTERVAL_MAX_USEC < handle->echo_timer.interval.tv_usec))) {
+		handle->echo_timer.interval.tv_sec = PING_TIMER_INTERVAL_MAX_SEC;
+		handle->echo_timer.interval.tv_usec = PING_TIMER_INTERVAL_MAX_USEC;
+		return;
+	}
+}
+
+static void echo_timer_interval_decrease(pingtun_t *handle) {
+	handle->echo_timer.interval.tv_usec /= 2;
+	handle->echo_timer.interval.tv_usec += 
+		(handle->echo_timer.interval.tv_sec % 2) * 1000 * 1000 / 2;
+	handle->echo_timer.interval.tv_sec /= 2;
+
+	if ((PING_TIMER_INTERVAL_MIN_SEC > handle->echo_timer.interval.tv_sec) ||
+			((PING_TIMER_INTERVAL_MIN_SEC == handle->echo_timer.interval.tv_sec) &&
+			(PING_TIMER_INTERVAL_MIN_USEC > handle->echo_timer.interval.tv_usec))) {
+		handle->echo_timer.interval.tv_sec = PING_TIMER_INTERVAL_MIN_SEC;
+		handle->echo_timer.interval.tv_usec = PING_TIMER_INTERVAL_MIN_USEC;
+		return;
+	}
+}
+
+static void echo_timer_reset(pingtun_t *handle) {
+	handle->flags.ping_timer_expired = 0;
+
+	if (handle->flags.received_data) {
+		echo_timer_interval_decrease(handle);
+	} else {
+		echo_timer_interval_increase(handle);
+	}
+	handle->flags.received_data = 0;
+
+	if (0 != event_add(handle->echo_timer.ev, &handle->echo_timer.interval)) {
+		ERR("event add failed");
+		exit(EXIT_FAILURE);
+	}
+}
+
 static void cping_write_cb(evutil_socket_t fd, short events, void *pt_handle) {
 	pingtun_t *handle = (pingtun_t *) pt_handle;
 	struct ping_struct *ping = &handle->cping;
-	const struct timeval interval = {
-		.tv_sec = PING_TIMER_INTERVAL_SEC,
-		.tv_usec = PING_TIMER_INTERVAL_USEC
-	};
 
 	if (0 != pingtun_ping_req(ping->ping, &handle->server)) {
 		ERR("write failed");
 		exit(EXIT_FAILURE);
 	}
 
-	handle->flags.ping_timer_expired = 0;
 	ping->state = STATE_NON;
+	echo_timer_reset(handle);
 
-	if (0 != event_add(handle->echo_timer_ev, &interval)) {
-		ERR("event add failed");
-		exit(EXIT_FAILURE);
-	}
-	
 	if (0 != event_add(ping->rcv_ev, NULL)) {
 		ERR("event add failed");
 		exit(EXIT_FAILURE);
@@ -364,6 +412,9 @@ static void cping_write_cb(evutil_socket_t fd, short events, void *pt_handle) {
 static void cping_read_cb(evutil_socket_t fd, short events, void *pt_handle) {
 	pingtun_t *handle = (pingtun_t *) pt_handle;
 	ping_read_cb(handle, &handle->cping, NULL);
+	if (STATE_TO_TUN == handle->cping.state) {
+		handle->flags.received_data = 1;
+	}
 }
 
 static void tun_write_cb(evutil_socket_t fd, short events, void *pt_handle) {
@@ -400,7 +451,7 @@ static void tun_write_cb(evutil_socket_t fd, short events, void *pt_handle) {
 	}
 
 	if (handle->flags.ping_timer_expired && (ping == &handle->cping)) {
-		ping_timer_cb(-1, EV_TIMEOUT, handle);
+		echo_timer_cb(-1, EV_TIMEOUT, handle);
 	}
 	
 	if (0 != event_add(handle->tun.read_ev, NULL)) {
@@ -417,7 +468,13 @@ static void tun_read_cb(evutil_socket_t fd, short events, void *pt_handle) {
 
 	if ((handle->flags.is_client) && (STATE_NON == handle->cping.state)) {
 		ping = &handle->cping;
-	} else if (STATE_NON == handle->sping.state) {
+	} else if ((handle->flags.is_client) &&
+			(handle->flags.ping_timer_expired) &&
+			(STATE_FROM_TUN == handle->cping.state) && 
+			(0 == pingtun_ping_len(handle->cping.ping))) {
+		ping = &handle->cping;
+	} else if ((handle->flags.is_server) &&
+			(STATE_NON == handle->sping.state)) {
 		ping = &handle->sping;
 	} else {
 		ERR("wat?");
@@ -436,6 +493,7 @@ static void tun_read_cb(evutil_socket_t fd, short events, void *pt_handle) {
 		ERR("failed set len");
 		exit(EXIT_FAILURE);
 	}
+	
 	ping->state = STATE_FROM_TUN;
 
 	if (0 != event_add(ping->snd_ev, NULL)) {
@@ -527,31 +585,38 @@ static int init_sping(pingtun_t *handle) {
 	return 0;
 }
 
-static int init_cping(pingtun_t *handle) {
-	const struct timeval interval = {
-		.tv_sec = PING_TIMER_INTERVAL_SEC,
-		.tv_usec = PING_TIMER_INTERVAL_USEC
-	};
+static int init_echo_timer(pingtun_t *handle) {
 
+	handle->echo_timer.interval.tv_sec = PING_TIMER_INTERVAL_MAX_SEC;
+	handle->echo_timer.interval.tv_usec = PING_TIMER_INTERVAL_MAX_USEC;
+
+	handle->echo_timer.ev = event_new(handle->base_ev, -1, EV_PERSIST,
+			echo_timer_cb, handle);
+	if (NULL == handle->echo_timer.ev) {
+		ERR("initializing ping timer failed");
+		return -1;
+	}
+	
+	if (0 != event_priority_set(handle->echo_timer.ev, PINGTUN_PRIO_WRITE)) {
+		ERR("event set priority failed");
+		return -1;
+	}
+
+	if (0 != event_add(handle->echo_timer.ev, &(handle->echo_timer.interval))) {
+		ERR("failed adding event");
+		return -1;
+	}
+
+	return 0;
+}
+
+static int init_cping(pingtun_t *handle) {
 	if (0 != init_ping(handle, &handle->cping, PINGTUN_PING_FILTER_ECHOREPLY,
 				cping_write_cb, cping_read_cb)) {
 		return -1;
 	}
 
-	handle->echo_timer_ev = event_new(handle->base_ev, -1, EV_PERSIST,
-			ping_timer_cb, handle);
-	if (NULL == handle->echo_timer_ev) {
-		ERR("initializing ping timer failed");
-		return -1;
-	}
-	
-	if (0 != event_priority_set(handle->echo_timer_ev, PINGTUN_PRIO_WRITE)) {
-		ERR("event set priority failed");
-		return -1;
-	}
-
-	if (0 != event_add(handle->echo_timer_ev, &interval)) {
-		ERR("failed adding event");
+	if (0 != init_echo_timer(handle)) {
 		return -1;
 	}
 

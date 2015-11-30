@@ -12,4 +12,4 @@
 * reply to non-tunneling pings
 * MTU discovery
 * DNS resolution
-* request timer adjustments according to congestion
+* implement command line flags to control echo request timer adjustments

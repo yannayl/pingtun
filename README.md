@@ -10,11 +10,11 @@ Thus, bypassing badly configured firewalls and captive portals.
 * periodic echo requests (bypass firewalls which prevent unsolicited replies)
 * single-threaded event driven architecture
 * user-space zero copy
+* echo request timer adjustments according to congestion
 * [FUTURE] strong authentication
 * [FUTURE] reply to non-tunneling pings
 * [FUTURE] MTU discovery
 * [FUTURE] DNS resolution
-* [FUTURE] request timer adjustments according to congestion
 
 ## Dependencies ##
 * libevent2
