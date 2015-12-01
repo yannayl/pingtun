@@ -65,6 +65,7 @@ static void icmp_header_init(pingtun_ping_t *handle) {
 static uint16_t checksum_rfc1701(void *data, size_t len) {
 	/* copied from http://tools.ietf.org/html/rfc1071 */
 	uint32_t sum = 0;
+	uint16_t tmp = 0;
     while (len > 1) {
 		sum += * (uint16_t *) data;
 		data += sizeof(uint16_t);
@@ -73,7 +74,8 @@ static uint16_t checksum_rfc1701(void *data, size_t len) {
 
      /*  Add left-over byte, if any */
 	if(len > 0) {
-		sum += * (uint8_t *) data;
+		*((uint8_t *) &tmp) = * (uint8_t *) data; 
+		sum += tmp;
 	}
 
 	/*  Fold 32-bit sum to 16 bits */
