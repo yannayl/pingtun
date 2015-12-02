@@ -26,9 +26,9 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <linux/filter.h>
-#include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <netinet/ip_icmp.h>
 
 
 #define pingtun_ping_icmphdr(handle) \

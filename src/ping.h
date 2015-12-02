@@ -23,12 +23,7 @@
 extern "C" {
 #endif
 
-#include <sys/types.h>
-#include <sys/socket.h>
 #include <netinet/in.h>
-#include <net/if.h>
-#include <linux/icmp.h>
-#include <linux/ip.h>
 
 #define MTU			(1500)
 

@@ -23,19 +23,76 @@
 extern "C" {
 #endif
 
-#include <stdio.h>
+#include "ping.h"
+#include "tun.h"
+#include "log.h"
+#include <sys/time.h>
+#include <netinet/in.h>
 
-#define LOG(format, ...)\
-	do { fprintf(stderr, "%s:%d:%s: " format "\n", __FILE__, __LINE__,\
-			__func__, ##__VA_ARGS__); } while (0)
+#define PING_TIMER_INTERVAL_MAX_SEC (3)
+#define PING_TIMER_INTERVAL_MAX_USEC (0)
 
-#define ERR(format, ...)\
-	LOG("ERR: " format, ##__VA_ARGS__)
+#define PING_TIMER_INTERVAL_MIN_SEC (0)
+#define PING_TIMER_INTERVAL_MIN_USEC (1000)
 
-#define DBG(format, ...)\
-	LOG("DBG: " format, ##__VA_ARGS__)
+typedef struct {
+	int ret;
 
-#define D() DBG("here")
+	struct {
+		int	is_client:1;
+		int is_server:1;
+		int ignore_pings:1;
+		int changed_ignore_pings:1;
+		int ping_timer_expired:1;
+		int received_data:1;
+	} flags;
+
+	struct	sockaddr_in server;
+	struct	sockaddr_in reply_addr;
+	struct	in_addr address;
+	struct 	in_addr	netmask;
+
+	struct ping_struct {
+		pingtun_ping_t *ping;
+		struct event *snd_ev;
+		struct event *rcv_ev;
+		enum {
+			STATE_NON,
+			STATE_TO_TUN,
+			STATE_FROM_TUN,
+		} state;
+	} sping, cping;
+
+	struct {	
+		pingtun_tun_t *tun;
+		struct event *read_ev;
+		struct event *write_ev;
+	} tun;
+
+	struct {
+		struct event *ev;	
+		struct timeval interval;
+	} echo_timer;
+
+	struct event *sigint_ev,
+				 *sighup_ev,
+				 *sigpipe_ev,
+				 *sigterm_ev,
+				 *sigusr1_ev,
+				 *sigusr2_ev,
+				 *sigstp_ev;
+
+	struct event_base *base_ev;
+} pingtun_t;
+
+typedef enum {
+	PINGTUN_PRIO_READ_LOW,
+	PINGTUN_PRIO_READ_NORMAL,
+	PINGTUN_PRIO_READ_HIGH,
+	PINGTUN_PRIO_WRITE,
+	PINGTUN_PRIO_SIGNAL,
+	PINGTUN_PRIO_MAX
+} pingtun_prio_e;
 
 #ifdef __cplusplus
 }
