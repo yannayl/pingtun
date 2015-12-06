@@ -28,10 +28,12 @@ extern "C" {
 #define MTU			(1500)
 
 typedef struct {
-	int 			fd;
-	void 			*packet;
-	size_t 			packet_size;
-	ssize_t			len;
+	int 		fd;
+	void 		*packet;
+	size_t 		packet_size;
+	ssize_t		len;
+	uint16_t	id;
+	uint16_t	seq;
 } pingtun_ping_t;
 
 typedef enum {

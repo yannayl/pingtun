@@ -57,9 +57,8 @@ struct sock_fprog progs[] = {
 };
 
 static void icmp_header_init(pingtun_ping_t *handle) {
-	pingtun_ping_icmphdr(handle)->type = ICMP_ECHO;
-	pingtun_ping_icmphdr(handle)->un.echo.id = rand();
-	pingtun_ping_icmphdr(handle)->un.echo.sequence = rand();
+	handle->id = rand();
+	handle->seq = rand();
 }
 
 static uint16_t checksum_rfc1701(void *data, size_t len) {
@@ -183,7 +182,9 @@ int pingtun_ping_rpl(pingtun_ping_t *handle,
 int pingtun_ping_req(pingtun_ping_t *handle,
 		const struct sockaddr_in *dest_addr) {
 	pingtun_ping_icmphdr(handle)->type = ICMP_ECHO;
-	pingtun_ping_icmphdr(handle)->un.echo.sequence += 1;
+	pingtun_ping_icmphdr(handle)->un.echo.id = handle->id;
+	pingtun_ping_icmphdr(handle)->un.echo.sequence = handle->seq;
+	handle->seq += 1;
 	return pingtun_ping_sendto(handle, dest_addr);
 }
 
