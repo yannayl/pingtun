@@ -185,10 +185,17 @@ size_t pingtun_ping_len(pingtun_ping_t *handle) {
 	return handle->len;
 }
 
-int pingtun_ping_rpl(pingtun_ping_t *handle,
-		const struct sockaddr_in *dest_addr) {
+int pingtun_ping_rpl(pingtun_ping_t *handle) {
+	struct sockaddr_in dest = {
+		.sin_family = AF_INET,
+		.sin_port = 0,
+		.sin_addr = {
+			.s_addr = pingtun_ping_iphdr(handle)->saddr,
+		}
+	};
+
 	pingtun_ping_icmphdr(handle)->type = ICMP_ECHOREPLY;
-	return pingtun_ping_sendto(handle, dest_addr);
+	return pingtun_ping_sendto(handle, &dest);
 }
 
 int pingtun_ping_req(pingtun_ping_t *handle,
@@ -200,19 +207,13 @@ int pingtun_ping_req(pingtun_ping_t *handle,
 	return pingtun_ping_sendto(handle, dest_addr);
 }
 
-int pingtun_ping_rcv(pingtun_ping_t *handle, struct sockaddr_in *src_addr) {
+int pingtun_ping_rcv(pingtun_ping_t *handle) {
 	int ret = -1;
-	socklen_t size = sizeof(*src_addr);
-	socklen_t *size_p = NULL;
 	size_t ip_header_size = 0;
 	
-	if (NULL != src_addr) {
-		size_p = &size;
-	}
+	handle->len = recvfrom(handle->fd, handle->packet, handle->packet_size, 0,
+			NULL, 0);
 
-	handle->len = recvfrom(handle->fd, handle->packet, handle->packet_size,
-			0, (struct sockaddr *) src_addr, size_p);
-	//TODO: verify the returned address is sockaddr_in
 	if (0 > handle->len) {
 		ERR("failed receiving. error: %s.", strerror(errno));
 		goto exit;

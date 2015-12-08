@@ -49,11 +49,10 @@ void *pingtun_ping_data(pingtun_ping_t *handle);
 size_t pingtun_ping_capacity(pingtun_ping_t *handle);
 size_t pingtun_ping_len(pingtun_ping_t *handle);
 int pingtun_ping_len_set(pingtun_ping_t *handle, size_t len);
-int pingtun_ping_rpl(pingtun_ping_t *handle,
-		const struct sockaddr_in *dest_addr);
+int pingtun_ping_rpl(pingtun_ping_t *handle);
 int pingtun_ping_req(pingtun_ping_t *handle,
 		const struct sockaddr_in *dest_addr);
-int pingtun_ping_rcv(pingtun_ping_t *handle, struct sockaddr_in *src_addr);
+int pingtun_ping_rcv(pingtun_ping_t *handle);
 void pingtun_ping_fini(pingtun_ping_t **handle);
 
 #ifdef __cplusplus

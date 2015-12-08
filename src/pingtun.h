@@ -50,7 +50,6 @@ typedef struct {
 	} flags;
 
 	struct	sockaddr_in server;
-	struct	sockaddr_in reply_addr;
 	struct	in_addr address;
 	struct	in_addr	netmask;
 	uint16_t	icmp_id;

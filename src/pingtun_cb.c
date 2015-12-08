@@ -71,11 +71,10 @@ static void echo_timer_reset(pingtun_t *handle) {
 	}
 }
 
-static void ptcb_ping_read(pingtun_t *handle, struct ping_struct *ping,
-		struct sockaddr_in *sock_addr) {
+static void ptcb_ping_read(pingtun_t *handle, struct ping_struct *ping) {
 	size_t len = 0;
 
-	if (0 != pingtun_ping_rcv(ping->ping, sock_addr)) {
+	if (0 != pingtun_ping_rcv(ping->ping)) {
 		ERR("read failed");
 		exit(EXIT_FAILURE);
 	}
@@ -108,7 +107,7 @@ void ptcb_sping_write(evutil_socket_t fd, short events, void *pt_handle) {
 	pingtun_t *handle = (pingtun_t *) pt_handle;
 	struct ping_struct *ping = &handle->sping;
 
-	if (0 != pingtun_ping_rpl(ping->ping, &handle->reply_addr)) {
+	if (0 != pingtun_ping_rpl(ping->ping)) {
 		ERR("write failed");
 		exit(EXIT_FAILURE);
 	}
@@ -124,7 +123,7 @@ void ptcb_sping_write(evutil_socket_t fd, short events, void *pt_handle) {
 void ptcb_sping_read(evutil_socket_t fd, short events, void *pt_handle) {
 	pingtun_t *handle = (pingtun_t *) pt_handle;
 	struct ping_struct *ping = &handle->sping;
-	ptcb_ping_read(handle, ping, &handle->reply_addr);
+	ptcb_ping_read(handle, ping);
 
 	if (STATE_NON != ping->state) {
 		return;
@@ -166,7 +165,7 @@ void ptcb_cping_write(evutil_socket_t fd, short events, void *pt_handle) {
 
 void ptcb_cping_read(evutil_socket_t fd, short events, void *pt_handle) {
 	pingtun_t *handle = (pingtun_t *) pt_handle;
-	ptcb_ping_read(handle, &handle->cping, NULL);
+	ptcb_ping_read(handle, &handle->cping);
 	if (STATE_TO_TUN == handle->cping.state) {
 		handle->flags.received_data = 1;
 	}
