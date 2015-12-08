@@ -198,7 +198,6 @@ int pingtun_ping_rpl(pingtun_ping_t *handle) {
 			.s_addr = pingtun_ping_iphdr(handle)->saddr,
 		}
 	};
-
 	pingtun_ping_icmphdr(handle)->type = ICMP_ECHOREPLY;
 	return pingtun_ping_sendto(handle, &dest);
 }
