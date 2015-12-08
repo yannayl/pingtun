@@ -42,7 +42,8 @@ typedef enum {
 	PINGTUN_PING_FILTER_MAX,
 } pingtun_ping_filter_e;
 
-int pingtun_ping_init(pingtun_ping_t **handle, pingtun_ping_filter_e filter);
+int pingtun_ping_init(pingtun_ping_t **handle, pingtun_ping_filter_e filter,
+		uint16_t id);
 int pingtun_ping_fd(pingtun_ping_t *handle);
 void *pingtun_ping_data(pingtun_ping_t *handle);
 size_t pingtun_ping_capacity(pingtun_ping_t *handle);

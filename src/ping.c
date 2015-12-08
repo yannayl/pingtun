@@ -37,29 +37,6 @@
 #define pingtun_ping_iphdr(handle) \
 	((struct iphdr *) (handle)->packet)
 
-struct sock_filter filter_echo[] = {
-	#include "../bpfgen/bpf_icmp_echo.prog"
-};
-
-struct sock_filter filter_echoreply[] = {
-	#include "../bpfgen/bpf_icmp_echoreply.prog"
-};
-
-struct sock_fprog progs[] = {
-	{
-	.len = sizeof(filter_echo) / sizeof(*filter_echo),
-	.filter = filter_echo,
-	},
-	{
-	.len = sizeof(filter_echoreply) / sizeof(*filter_echoreply),
-	.filter = filter_echoreply,
-	},
-};
-
-static void icmp_header_init(pingtun_ping_t *handle) {
-	handle->id = rand();
-	handle->seq = rand();
-}
 
 static uint16_t checksum_rfc1701(void *data, size_t len) {
 	/* copied from http://tools.ietf.org/html/rfc1071 */
@@ -109,7 +86,42 @@ exit:
 	return ret;
 }
 
-int pingtun_ping_init(pingtun_ping_t **handle, pingtun_ping_filter_e filter) {
+static int set_filter(pingtun_ping_t *handle, pingtun_ping_filter_e fid) {
+	int ret = -1;
+	struct sock_filter filter[] = {
+		BPF_STMT(BPF_LDX|BPF_B|BPF_MSH, 0), /* load IP data offset */
+		BPF_STMT(BPF_LD|BPF_B|BPF_IND, 0), /* load icmp type */
+		BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K, ICMP_ECHOREPLY, 0, 3), /* correct type? */
+		BPF_STMT(BPF_LD|BPF_H|BPF_IND, 4), /* load icmp echo identity */
+		BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K, ntohs(handle->id), 0, 1), /* ours? */
+		BPF_STMT(BPF_RET|BPF_K, 0xffff), /* accept. */
+		BPF_STMT(BPF_RET|BPF_K, 0), /* reject */
+	};
+	struct sock_fprog prog = {
+		.len = sizeof(filter) / sizeof(*filter),
+		.filter = filter
+	};
+
+	switch (fid) {
+		case PINGTUN_PING_FILTER_ECHO:
+			filter[2].k = ICMP_ECHO;
+			break;
+		default:
+			break;
+	}
+
+	if (0 != setsockopt(handle->fd, SOL_SOCKET, SO_ATTACH_FILTER, &prog,
+				sizeof(prog))) {
+		ERR("failed attaching filter");
+		goto exit;
+	}
+	ret = 0;
+exit:
+	return ret;
+}
+
+int pingtun_ping_init(pingtun_ping_t **handle, pingtun_ping_filter_e filter,
+		uint16_t id) {
 	int ret = -1;
 
 	*handle = calloc(1, sizeof(pingtun_ping_t));
@@ -131,13 +143,13 @@ int pingtun_ping_init(pingtun_ping_t **handle, pingtun_ping_filter_e filter) {
 		goto exit;
 	}
 
-	if (0 != setsockopt((*handle)->fd, SOL_SOCKET, SO_ATTACH_FILTER,
-				&progs[filter], sizeof(progs[filter]))) {
-		ERR("failed attaching filter");
+	(*handle)->id = htons(id);
+	(*handle)->seq = rand();
+	
+	if (0 != set_filter(*handle, filter)) {
 		goto exit;
 	}
 
-	icmp_header_init(*handle);
 
 	ret = 0;
 exit:

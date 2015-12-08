@@ -44,6 +44,7 @@ static void usage() {
 "usage:\t"	"pingtun [-c|--client-only] [-s|--server <address>] <address> <netmask>\n"
 	"\t-s|--server <address>\t"	"sets the adress of the ping tunnel\n"
 	"\t-c|--client-only\t"		"client mode only, don't list to echo requests\n"
+	"\t-i|--id\t\t\t"			"icmp id, 2 bytes (number between 0 and 65535)\n"
 	);
 
 	exit(EXIT_FAILURE);
@@ -58,6 +59,32 @@ static void parse_opt_server(pingtun_t *handle) {
 	handle->server.sin_family = AF_INET;	
 	handle->server.sin_addr = server_addr;
 	handle->flags.is_client = 1;
+}
+
+static void parse_opt_icmpid(pingtun_t *handle) {
+	char *endptr = NULL;
+	long int val = 0;
+	
+	if ('\0' == optarg) {
+		goto err;
+	}
+
+	val = strtol(optarg, &endptr, 0);
+	if ('\0' != *endptr) {
+		goto err;
+	}
+
+	if ((0 > val) || (UINT16_MAX < val)) {
+		goto err;
+	}
+
+	handle->icmp_id = val;
+
+	return;
+
+err:
+	ERR("invalid id: %s", optarg);
+	usage();
 }
 
 static void parse_opt_netmask(pingtun_t *handle, char *arg) {
@@ -76,14 +103,16 @@ static void parse_opt_address(pingtun_t *handle, char *arg) {
 
 static void parse_opts(pingtun_t *handle, int argc, char **argv) {
 	int c = -1;
-	const char shortopts[] = "s:c";
+	const char shortopts[] = "s:ci:";
 	static const struct option long_options[] = {
 		{"server", required_argument, 0, 's'},
 		{"client-only", required_argument, 0, 'c'},
+		{"id", required_argument, 0, 'i'},
 		{0,0,0,0}
 	};
 
 	handle->flags.is_server = 1;
+	handle->icmp_id = PINGTUN_DFL_ICMPID;
 
 	c = getopt_long(argc, argv, shortopts, long_options,  NULL);
 	while (-1 != c) {
@@ -93,6 +122,9 @@ static void parse_opts(pingtun_t *handle, int argc, char **argv) {
 				break;
 			case 'c':
 				handle->flags.is_server = 0;
+				break;
+			case 'i':
+				parse_opt_icmpid(handle);
 				break;
 			default:
 				ERR("unknown options: %d", c);
@@ -202,7 +234,7 @@ static int init_base_ev(pingtun_t *handle) {
 static int init_ping(pingtun_t *handle, struct ping_struct *ping,
 		pingtun_ping_filter_e filter, event_callback_fn write_cb,
 		event_callback_fn read_cb) {
-	if (0 != pingtun_ping_init(&ping->ping, filter)) {
+	if (0 != pingtun_ping_init(&ping->ping, filter, handle->icmp_id)) {
 		ERR("initializing ping socket failed.");
 		return -1;
 	}

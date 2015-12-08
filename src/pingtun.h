@@ -35,6 +35,8 @@ extern "C" {
 #define PING_TIMER_INTERVAL_MIN_SEC (0)
 #define PING_TIMER_INTERVAL_MIN_USEC (1000)
 
+#define PINGTUN_DFL_ICMPID	(0x8e2c)
+
 typedef struct {
 	int ret;
 
@@ -50,7 +52,8 @@ typedef struct {
 	struct	sockaddr_in server;
 	struct	sockaddr_in reply_addr;
 	struct	in_addr address;
-	struct 	in_addr	netmask;
+	struct	in_addr	netmask;
+	uint16_t	icmp_id;
 
 	struct ping_struct {
 		pingtun_ping_t *ping;
