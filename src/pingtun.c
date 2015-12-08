@@ -127,7 +127,7 @@ static void parse_opts(pingtun_t *handle, int argc, char **argv) {
 				parse_opt_icmpid(handle);
 				break;
 			default:
-				ERR("unknown options: %d", c);
+				ERR("unknown options: %c", c);
 				usage();
 		}
 
