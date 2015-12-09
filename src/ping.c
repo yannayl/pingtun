@@ -106,6 +106,11 @@ static int set_filter(pingtun_ping_t *handle, pingtun_ping_filter_e fid) {
 		case PINGTUN_PING_FILTER_ECHO:
 			filter[2].k = ICMP_ECHO;
 			break;
+		case PINGTUN_PING_FILTER_ECHO_BADID:
+			filter[2].k = ICMP_ECHO;
+			filter[4].jt = 1;
+			filter[4].jf = 0;
+			break;
 		default:
 			break;
 	}

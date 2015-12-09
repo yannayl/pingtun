@@ -171,36 +171,6 @@ void ptcb_cping_read(evutil_socket_t fd, short events, void *pt_handle) {
 	}
 }
 
-void ptcb_reply_write(evutil_socket_t fd, short events, void *pt_handle) {
-	pingtun_t *handle = (pingtun_t *) pt_handle;
-	struct ping_struct *ping = &handle->reply;
-
-	if (0 != pingtun_ping_rpl(ping->ping)) {
-		ERR("write failed");
-		exit(EXIT_FAILURE);
-	}
-
-	if (0 != event_add(ping->rcv_ev, NULL)) {
-		ERR("event add failed");
-		exit(EXIT_FAILURE);
-	}
-}
-
-void ptcb_reply_read(evutil_socket_t fd, short events, void *pt_handle) {
-	pingtun_t *handle = (pingtun_t *) pt_handle;
-	struct ping_struct *ping = &handle->reply;
-
-	if (0 != pingtun_ping_rcv(ping->ping)) {
-		ERR("read failed");
-		exit(EXIT_FAILURE);
-	}
-
-	if (0 != event_add(ping->snd_ev, NULL)) {
-		ERR("event add failed");
-		exit(EXIT_FAILURE);
-	}
-}
-
 void ptcb_tun_write(evutil_socket_t fd, short events, void *pt_handle) {
 	pingtun_t *handle = (pingtun_t *) pt_handle;
 	struct ping_struct *ping = NULL;

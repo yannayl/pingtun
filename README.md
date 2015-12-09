@@ -11,8 +11,8 @@ Thus, bypassing badly configured firewalls and captive portals.
 * single-threaded event driven architecture
 * user-space zero copy
 * echo request timer adjustments according to congestion
+* reply to non-tunneling pings
 * [FUTURE] strong authentication
-* [FUTURE] reply to non-tunneling pings
 * [FUTURE] MTU discovery
 * [FUTURE] DNS resolution
 

@@ -318,6 +318,21 @@ static int init_cping(pingtun_t *handle) {
 	return 0;
 }
 
+static int init_reply(pingtun_t *handle) {
+	if (0 != init_ping(handle, &handle->reply,
+				PINGTUN_PING_FILTER_ECHO_BADID,
+				ptcb_reply_write, ptcb_reply_read)) {
+		return -1;
+	}
+	
+	if (0 != event_add(handle->reply.rcv_ev, NULL)) {
+		ERR("failed adding event");
+		return -1;
+	}
+
+	return 0;
+}
+
 static int init_tun(pingtun_t *handle) {
 	size_t mtu = 0;
 	
@@ -428,11 +443,19 @@ int main(int argc, char **argv) {
 			goto exit;
 		}
 	}
+	
 	if (handle.flags.is_client) {
 		if (0 != init_cping(&handle)) {
 			goto exit;
 		}
 	}
+
+	if (handle.flags.is_server && !handle.flags.ignore_pings) {
+		if (0 != init_reply(&handle)) {
+			goto exit;
+		}
+	}
+
 
 	DBG("initializing tun device");
 	if (0 != init_tun(&handle)) {

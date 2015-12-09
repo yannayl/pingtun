@@ -39,6 +39,7 @@ typedef struct {
 typedef enum {
 	PINGTUN_PING_FILTER_ECHO,
 	PINGTUN_PING_FILTER_ECHOREPLY,
+	PINGTUN_PING_FILTER_ECHO_BADID,
 	PINGTUN_PING_FILTER_MAX,
 } pingtun_ping_filter_e;
 

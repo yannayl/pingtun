@@ -63,7 +63,7 @@ typedef struct {
 			STATE_TO_TUN,
 			STATE_FROM_TUN,
 		} state;
-	} sping, cping, reply;
+	} sping, cping;
 
 	struct {	
 		pingtun_tun_t *tun;

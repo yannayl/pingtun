@@ -31,6 +31,8 @@ void ptcb_sping_write(evutil_socket_t fd, short events, void *pt_handle);
 void ptcb_sping_read(evutil_socket_t fd, short events, void *pt_handle);
 void ptcb_cping_write(evutil_socket_t fd, short events, void *pt_handle);
 void ptcb_cping_read(evutil_socket_t fd, short events, void *pt_handle);
+void ptcb_reply_write(evutil_socket_t fd, short events, void *pt_handle);
+void ptcb_reply_read(evutil_socket_t fd, short events, void *pt_handle);
 void ptcb_tun_write(evutil_socket_t fd, short events, void *pt_handle);
 void ptcb_tun_read(evutil_socket_t fd, short events, void *pt_handle);
 void ptcb_break(evutil_socket_t signal, short events, void *pt_handle);
