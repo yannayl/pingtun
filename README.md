@@ -13,14 +13,11 @@ Thus, bypassing badly configured firewalls and captive portals.
 * echo request timer adjustments according to congestion
 * reply to non-tunneling pings
 * DNS resolution
-* [FUTURE] strong authentication
-* [FUTURE] MTU discovery
 
 ## Dependencies ##
 * libevent2
 * tun driver
 * linux socket filter
-
 
 ## Build ##
 ```
@@ -36,10 +33,11 @@ sudo pingtun 10.9.0.1 255.255.255.252
 ```
 on the client:
 ```
-sudo pingtun --client-only --server $SERVER_IP 10.9.0.1 255.255.255.252
+sudo pingtun --client-only --server $SERVER 10.9.0.1 255.255.255.252
 ```
 
 ## Platforms ##
 * GNU/Linux
 * [FUTURE] android
+* [FUTURE] mac (client only)
 
