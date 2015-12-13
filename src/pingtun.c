@@ -22,6 +22,7 @@
 #include "ping.h"
 #include "log.h"
 
+#include <netdb.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,14 +52,40 @@ static void usage() {
 }
 
 static void parse_opt_server(pingtun_t *handle) {
-	struct in_addr server_addr = {0};
-	if (0 == inet_aton(optarg, &server_addr)) {
-		ERR("invalid server address %s", optarg);
-		usage();
-	}
+	struct addrinfo *res = NULL;
+	struct addrinfo *res_iter = NULL;
+	int errcode = 0;
+
 	handle->server.sin_family = AF_INET;	
-	handle->server.sin_addr = server_addr;
 	handle->flags.is_client = 1;
+
+	if (0 != inet_aton(optarg, &handle->server.sin_addr)) {
+		return;
+	}
+
+	errcode = getaddrinfo(optarg, NULL, NULL, &res);
+	if (0 != errcode) {
+		ERR("name resolution failed for \"%s\". error: %s", optarg, gai_strerror(errcode));
+		usage();
+		// no return, otherwise freeaddrinfo
+	}
+
+	for (res_iter = res; NULL != res_iter; res_iter = res_iter->ai_next) {
+		if (res_iter->ai_family != AF_INET) {
+			continue;
+		}
+
+		handle->server = *((struct sockaddr_in *) res_iter->ai_addr);
+		break;
+	}
+
+	if (NULL == res_iter) {
+		ERR("failed to resolve name \"%s\" to IPv4 address", optarg);
+		usage();
+		// no return, otherwise freeaddrinfo
+	}
+
+	freeaddrinfo(res);
 }
 
 static void parse_opt_icmpid(pingtun_t *handle) {

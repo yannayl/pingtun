@@ -12,9 +12,9 @@ Thus, bypassing badly configured firewalls and captive portals.
 * user-space zero copy
 * echo request timer adjustments according to congestion
 * reply to non-tunneling pings
+* DNS resolution
 * [FUTURE] strong authentication
 * [FUTURE] MTU discovery
-* [FUTURE] DNS resolution
 
 ## Dependencies ##
 * libevent2

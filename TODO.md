@@ -11,5 +11,4 @@
 * authentication
 * reply to non-tunneling pings
 * MTU discovery
-* DNS resolution
 * implement command line flags to control echo request timer adjustments
