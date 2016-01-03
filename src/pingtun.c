@@ -42,9 +42,9 @@
 
 static void usage() {
 	fprintf(stderr, 
-"usage:\t"	"pingtun [-c|--client-only] [-s|--server <address>] <address> <netmask>\n"
+"usage:\t"	"pingtun [-c|--client-only] [-s|--server <server_addr>] <tun_addr> <tun_netmask>\n"
 	"\t-s|--server <address>\t"	"sets the adress of the ping tunnel\n"
-	"\t-c|--client-only\t"		"client mode only, don't list to echo requests\n"
+	"\t-c|--client-only\t"		"client mode only, don't listen to echo requests\n"
 	"\t-i|--id\t\t\t"			"icmp id, 2 bytes (number between 0 and 65535)\n"
 	);
 
